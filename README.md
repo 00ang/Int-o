@@ -60,8 +60,9 @@ disables the rest. Run it on your own machine before your first real ingest.
 Expect a meaningful number to fail - feed URLs rot constantly, and the wire
 services in particular move theirs.
 
-Everything else in the system is verified: 46 tests cover parsing, entity
-resolution, the detectors and the scoring, all against recorded fixtures.
+Everything else in the system is verified: 113 tests cover parsing, entity
+resolution, the detectors, the scoring and the trade import, all against
+recorded fixtures.
 
 ---
 
@@ -73,6 +74,7 @@ resolution, the detectors and the scoring, all against recorded fixtures.
 | `init` | Create the database, load the registry | no |
 | `sources` / `sources:check [--fix]` | List / probe sources | no |
 | `ingest [--all] [-s id...]` | Fetch new items from due sources | no |
+| `import:trades <file> [-n]` | Import disclosed trades from CSV/JSON | no |
 | `extract [-l n]` | Items → structured events | **yes** |
 | `link [-H] [-d days]` | Find connections (`-H` adds hypotheses) | only with `-H` |
 | `threads:update` | Assign events to storylines, resynthesize | **yes** |
@@ -80,6 +82,7 @@ resolution, the detectors and the scoring, all against recorded fixtures.
 | `run` | The whole pipeline | **yes** |
 | `threads` / `thread <id>` | List / read storylines | no |
 | `connections [-b basis]` | Browse links found | no |
+| `trades [--late] [-f name]` | Browse disclosed trades and late filings | no |
 | `verdict <id> <sound\|coincidence\|wrong>` | Record your judgement | no |
 | `entity <name>` / `entities` | What a party has been involved in | no |
 | `search <query>` | Full-text over everything ingested | no |
@@ -176,17 +179,52 @@ Each carries editorial origin and lean - not to down-rank anyone, but so a
 storyline carried entirely by outlets sharing one vantage can be flagged as
 such.
 
-### Known limitation: congressional trade detail
+### Congressional trade detail
 
 The House Clerk's disclosure index gives you *who* filed a periodic transaction
 report and *when*. It does not give you the ticker, direction or size - those
-are in per-filing PDFs, many of them scans without a text layer.
+are in per-filing PDFs, many of them scans without a text layer. That is why
+`src/sources/stock-act.ts` can only produce "member filed a PTR" items.
 
-So `trade-then-award` currently runs on SEC Form 4 (structured and complete for
-corporate insiders) and on anything you import yourself. **Do not read the
-absence of congressional trade detail as an absence of congressional trading.**
-Closing this gap - PDF parsing, or an import path for data parsed elsewhere -
-is the highest-value next piece of work.
+`import:trades` closes the gap from the other end. Whatever parsed those PDFs -
+a community dataset, a vendor API, your own script - hand the result to it:
+
+```bash
+throughline import:trades house-trades.json --dry-run   # see what it will do
+throughline import:trades house-trades.json
+throughline link                                        # now it has trades to join
+throughline trades --late                               # who filed past the deadline
+```
+
+CSV or JSON, no mapping file. Column names are recognised across the shapes
+that actually exist - `representative`/`senator`/`member`, `transaction_date`,
+`disclosure_date`, `ticker`, `type`, `amount` - so the public
+house-stock-watcher and senate-stock-watcher dumps, the common vendor exports
+and a hand-rolled spreadsheet all import as-is. `--dry-run` prints the column
+mapping and the rows it would drop before writing anything.
+
+Each trade becomes a `securities-trade` event with the filer as `actor` and the
+issuer as `target`, which is the exact shape `trade-then-award` already looks
+for. So importing congressional trades makes every existing detector work on
+them, with no change to the rules.
+
+**What it will not do.** Disclosures report *bands* ("$1,001 - $15,000"), so the
+event carries the band's lower bound and both ends go to tags. There is no
+midpoint anywhere: a midpoint reads as a measurement and it is not one. Rows it
+cannot date or attribute are dropped and counted, not defaulted - including the
+typo'd years the public House dataset contains, because a trade dated 9 AD
+matches every detector window there is.
+
+**The disclosure lag.** The interval between executing a trade and filing it is
+the one number here that is a fact rather than an inference, and the STOCK Act
+gives it a bright line: a periodic transaction report is due within 45 days.
+Every imported trade carries `disclosure-lag:<n>`; one past that line carries
+`late-filing` and shows up in `trades --late`. Cheapest real signal in the
+dataset.
+
+Still open: parsing the PTR PDFs directly, so no external dataset is needed.
+**Do not read the absence of congressional trade detail as an absence of
+congressional trading.**
 
 ---
 
@@ -231,23 +269,25 @@ condition of their access policies.
 
 ## Status and what's next
 
-Built: the core engine and the CLI. Verified: 46 tests over parsing, entity
-resolution, detectors and scoring. Unverified: the feed URLs, which need
-`sources:check --fix` on a networked machine.
+Built: the core engine, the CLI and the trade import path. Verified: 113 tests
+over parsing, entity resolution, detectors, scoring and import. Unverified: the
+feed URLs, which need `sources:check --fix` on a networked machine.
 
 Next, in order:
 
 1. **`sources:check --fix`**, then prune what fails. Nothing downstream is
    worth much until the inputs are real.
-2. **Congressional trade detail** - the gap described above.
-3. **Web app** - Next.js over the same SQLite/libSQL store: storyline pages,
-   entity pages, the connection graph, search.
-4. **Forecasting** - the schema and Brier scoring are already in
+2. **Forecasting** - the schema and Brier scoring are already in
    (`forecasts` table, `resolveForecast`, `calibration`). What's missing is
    question generation from live threads and the fetch that anchors each
    estimate to a matching Polymarket/Kalshi/Metaculus price. Every forecast
    carries a resolution criterion and gets scored, because a forecast nobody
    scores is just an opinion with a number on it.
+3. **Web app** - Next.js over the same SQLite/libSQL store: storyline pages,
+   entity pages, the connection graph, search.
+4. **PTR PDF parsing**, so congressional trade detail needs no external
+   dataset. `import:trades` covers this today from any source that has already
+   parsed them.
 
 ---
 

@@ -1,0 +1,66 @@
+[
+  {
+    "disclosure_year": 2026,
+    "disclosure_date": "07/14/2026",
+    "transaction_date": "2026-06-02",
+    "owner": "self",
+    "ticker": "MRDN",
+    "asset_description": "Meridian Aerospace Corp",
+    "type": "purchase",
+    "amount": "$15,001 - $50,000",
+    "representative": "Hon. Dana Whitfield",
+    "district": "TX07",
+    "ptr_link": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20260714.pdf",
+    "cap_gains_over_200_usd": false
+  },
+  {
+    "disclosure_year": 2026,
+    "disclosure_date": "2026-08-20",
+    "transaction_date": "2026-06-02",
+    "owner": "spouse",
+    "ticker": "MRDN",
+    "asset_description": "Meridian Aerospace Corp",
+    "type": "sale_partial",
+    "amount": "$1,001 - $15,000",
+    "representative": "Whitfield, Dana",
+    "district": "TX07",
+    "ptr_link": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20260820.pdf"
+  },
+  {
+    "disclosure_year": 2026,
+    "disclosure_date": "2026-07-01",
+    "transaction_date": "2026-06-20",
+    "owner": "joint",
+    "ticker": "--",
+    "asset_description": "Rental property, Travis County TX",
+    "asset_type": "Real Estate Invest. Trust",
+    "type": "purchase",
+    "amount": "$1,001 -",
+    "representative": "Hon. Marcus Reyes",
+    "district": "OH03"
+  },
+  {
+    "disclosure_year": 2026,
+    "disclosure_date": "2026-07-05",
+    "transaction_date": "0009-06-09",
+    "owner": "self",
+    "ticker": "NVDA",
+    "asset_description": "NVIDIA Corporation",
+    "type": "purchase",
+    "amount": "$1,001 - $15,000",
+    "representative": "Hon. Marcus Reyes",
+    "district": "OH03"
+  },
+  {
+    "disclosure_year": 2026,
+    "disclosure_date": "2026-07-05",
+    "transaction_date": "2026-06-28",
+    "owner": "self",
+    "ticker": "AAPL",
+    "asset_description": "Apple Inc.",
+    "type": "purchase",
+    "amount": "Over $50,000,000",
+    "representative": "",
+    "district": "OH03"
+  }
+]

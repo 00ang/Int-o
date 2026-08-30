@@ -65,7 +65,9 @@ export type SourceKind =
   | 'sec-edgar'
   | 'stock-act'
   | 'prediction-market'
-  | 'json-api';
+  | 'json-api'
+  /** Written by `import:trades` from a file. Nothing to poll, nothing to probe. */
+  | 'import';
 
 export interface Source {
   id: string;

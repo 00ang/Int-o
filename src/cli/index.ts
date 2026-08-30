@@ -5,7 +5,7 @@ import { openDb } from '../core/db.js';
 import {
   connectionsSince, counts, eventsForEntity, findEntityByName, getEvent, getItem, insertConnection,
   getSource, listSources, listThreads, searchItems, setConnectionVerdict, threadEvents,
-  topEntities, latestBrief, getThread,
+  topEntities, latestBrief, getThread, tradeEvents,
 } from '../core/store.js';
 import { buildBrief } from '../pipeline/brief.js';
 import { extract } from '../pipeline/extract.js';
@@ -14,6 +14,10 @@ import { link } from '../pipeline/link.js';
 import { runAllPairRules } from '../pipeline/detectors/deterministic.js';
 import { updateThreads } from '../pipeline/threads.js';
 import { seedDemo } from './demo.js';
+import {
+  importTradeFile, parseTradeFile, STOCK_ACT_FILING_DEADLINE_DAYS, type Chamber,
+} from '../pipeline/import-trades.js';
+import { readFileSync } from 'node:fs';
 
 const cfg = loadConfig();
 const db = () => openDb(cfg.dbPath);
@@ -102,6 +106,108 @@ program
     });
     console.log(`\n${ok}/${results.length} sources reachable.`);
     if (!o.fix) console.log('Re-run with --fix to persist these results.');
+  });
+
+// ---------------------------------------------------------------------------
+// Trade import
+// ---------------------------------------------------------------------------
+
+program
+  .command('import:trades <file>')
+  .description('Import disclosed trades from a CSV or JSON file')
+  .option('--source-id <id>', 'source id to file these under', 'imported-trades')
+  .option('--source-name <name>', 'human-readable source name')
+  .option('--chamber <chamber>', 'house, senate or other; inferred from the columns if omitted')
+  .option('--tier <tier>', 'credibility tier for the source row', 'primary')
+  .option('-l, --limit <n>', 'import at most this many rows', Number)
+  .option('-n, --dry-run', 'parse and report, write nothing')
+  .action((file: string, o) => {
+    if (o.chamber && !['house', 'senate', 'other'].includes(o.chamber)) {
+      console.error('--chamber must be house, senate or other.');
+      process.exitCode = 1;
+      return;
+    }
+    const text = readFileSync(file, 'utf8');
+
+    if (o.dryRun) {
+      const { trades, skipped, columns } = parseTradeFile(text, { chamber: o.chamber as Chamber });
+      console.log(`Would import ${trades.length} trades from ${file}.`);
+      reportColumns(columns);
+      reportSkipped(skipped);
+      for (const t of trades.slice(0, 5)) console.log(`  ${t.transactedAt.slice(0, 10)}  ${t.filer} ${t.action} ${t.ticker ?? t.assetName ?? '?'}`);
+      if (trades.length > 5) console.log(`  ... and ${trades.length - 5} more`);
+      return;
+    }
+
+    const r = importTradeFile(db(), text, {
+      file,
+      sourceId: o.sourceId,
+      sourceName: o.sourceName,
+      tier: o.tier,
+      chamber: o.chamber as Chamber,
+      limit: o.limit,
+    });
+
+    console.log(`Parsed ${r.parsed} trades from ${file}.`);
+    reportColumns(r.columns);
+    reportSkipped(r.skipped);
+    console.log(`\n${r.itemsInserted} new items, ${r.eventsWritten} events written under source "${r.sourceId}".`);
+    if (r.withoutTicker > 0) {
+      console.log(`${r.withoutTicker} had no identifiable issuer - recorded, but they cannot join to an award.`);
+    }
+    if (r.lateFilings > 0) {
+      console.log(`${r.lateFilings} were filed past the ${STOCK_ACT_FILING_DEADLINE_DAYS}-day STOCK Act deadline. See: throughline trades --late`);
+    }
+    console.log('\nNext: throughline link   (trade-then-award now has congressional trades to join)');
+  });
+
+function reportColumns(columns: Record<string, string | undefined>): void {
+  const found = Object.entries(columns).filter(([, v]) => v !== undefined);
+  console.log(`Columns matched: ${found.map(([k, v]) => `${k}=${v}`).join(', ') || 'none'}`);
+  // Say plainly what is missing, because each absence disables something
+  // downstream rather than merely degrading it.
+  if (!columns.ticker) console.log('  No ticker column: issuer matching will rely on asset descriptions.');
+  if (!columns.disclosureDate) console.log('  No disclosure date column: filing lag cannot be computed.');
+}
+
+function reportSkipped(skipped: { reason: string }[]): void {
+  if (skipped.length === 0) return;
+  const byReason = new Map<string, number>();
+  for (const s of skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
+  console.log(`Skipped ${skipped.length} rows:`);
+  for (const [reason, n] of [...byReason].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${String(n).padStart(5)}  ${reason}`);
+  }
+}
+
+program
+  .command('trades')
+  .description('Browse disclosed trades, newest first')
+  .option('--late', `only trades filed past the ${STOCK_ACT_FILING_DEADLINE_DAYS}-day deadline`)
+  .option('-c, --congressional', 'only congressional trades')
+  .option('-f, --filer <name>', 'only this filer')
+  .option('-l, --limit <n>', 'how many', Number, 40)
+  .action((o) => {
+    const rows = tradeEvents(db(), {
+      lateOnly: o.late,
+      congressionalOnly: o.congressional,
+      filer: o.filer,
+      limit: o.limit,
+    });
+    if (rows.length === 0) {
+      console.log('No trades match. Import some: throughline import:trades <file>');
+      return;
+    }
+    for (const ev of rows) {
+      const lag = ev.tags.find((t) => t.startsWith('disclosure-lag:'))?.split(':')[1];
+      // A negative lag is a data error worth seeing, so sign it rather than
+      // prefixing everything with '+'.
+      const lagCell = lag === undefined ? '' : `${Number(lag) >= 0 ? '+' : ''}${lag}d`;
+      const flag = ev.tags.includes('late-filing') ? ' LATE' : '';
+      console.log(`${ev.occurredAt.slice(0, 10)}  ${lagCell.padStart(6)}${flag.padEnd(5)} ${ev.summary}`);
+    }
+    const late = rows.filter((e) => e.tags.includes('late-filing')).length;
+    console.log(`\n${rows.length} shown, ${late} filed late.`);
   });
 
 // ---------------------------------------------------------------------------

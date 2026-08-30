@@ -307,6 +307,39 @@ export function eventsByType(db: DB, type: string, sinceIso?: string): Event[] {
   return hydrate(db, rows);
 }
 
+/**
+ * Disclosed trades, newest first.
+ *
+ * Tags are JSON text rather than a table, so membership is a LIKE over the
+ * encoded form. That is the same trade-off the rest of the schema makes, and
+ * at this corpus size the scan is cheaper than the join table would be.
+ */
+export function tradeEvents(
+  db: DB,
+  opts: { lateOnly?: boolean; congressionalOnly?: boolean; filer?: string; limit?: number } = {},
+): Event[] {
+  const where = ["e.type = 'securities-trade'"];
+  const params: unknown[] = [];
+  if (opts.lateOnly) where.push(`e.tags LIKE '%"late-filing"%'`);
+  if (opts.congressionalOnly) where.push(`e.tags LIKE '%"congressional-trade"%'`);
+  if (opts.filer) {
+    where.push(`EXISTS (
+      SELECT 1 FROM event_entities ee JOIN entities ent ON ent.id = ee.entity_id
+       WHERE ee.event_id = e.id AND ee.role = 'actor' AND ent.slug = ?)`);
+    params.push(slugifyEntity(opts.filer));
+  }
+  params.push(opts.limit ?? 50);
+  return hydrate(
+    db,
+    db.prepare(
+      `SELECT e.* FROM events e
+        WHERE ${where.join(' AND ')}
+        ORDER BY e.occurred_at DESC
+        LIMIT ?`,
+    ).all(...params),
+  );
+}
+
 export function eventsForEntity(db: DB, entityId: string, limit = 200): Event[] {
   return hydrate(
     db,

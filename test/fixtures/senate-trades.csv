@@ -1,0 +1,6 @@
+senator,transaction_date,disclosure_date,owner,ticker,asset_description,asset_type,type,amount,comment
+Hon. Priya Anand,05/04/2026,06/30/2026,Self,HLX,"Helix Dynamics, Inc.",Stock,Purchase,"$50,001 - $100,000",
+Hon. Priya Anand,05/04/2026,04/30/2026,Self,HLX,"Helix Dynamics, Inc.",Stock,Sale (Full),"$15,001 - $50,000",filing dated before the trade
+"Gorman, Jr.",06/11/2026,06/25/2026,Spouse,$brk.b,Berkshire Hathaway Inc. (BRK.B),Stock,Purchase,"$1,001 - $15,000",
+Hon. Priya Anand,06/15/2026,06/20/2026,Self,,"Municipal bond, City of Ames",Municipal Security,Purchase,"$100,001 - $250,000",
+,06/15/2026,06/20/2026,Self,ZZZ,Nobody Corp,Stock,Purchase,"$1,001 - $15,000",row with no filer

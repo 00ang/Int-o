@@ -28,6 +28,10 @@ export async function fetchSource(source: Source, cfg: Config): Promise<Item[]> 
     case 'sec-edgar': return fetchEdgar(source, cfg);
     case 'stock-act': return fetchStockAct(source, cfg);
     case 'prediction-market': return fetchPredictionMarket(source, cfg);
+    case 'import':
+      // Written by `import:trades`. There is no endpoint behind it; re-running
+      // the import is how it gets new material.
+      throw new Error(`Source ${source.id} is import-only; run 'throughline import:trades <file>'`);
     case 'json-api':
       // Congress.gov and CourtListener each need their own key handling; until
       // those adapters exist, say so rather than silently skipping.
@@ -65,6 +69,9 @@ export async function ingest(
   } else {
     due = opts.all ? listSources(db, { enabledOnly: true }) : sourcesDueForFetch(db);
   }
+  // Import-only sources have nothing to poll, and naming one explicitly with
+  // -s should not manufacture a failure.
+  due = due.filter((s) => s.kind !== 'import');
 
   const results: IngestResult[] = [];
   for (const source of due) {
@@ -111,6 +118,9 @@ export async function checkSources(
 ): Promise<SourceCheck[]> {
   const out: SourceCheck[] = [];
   for (const source of listSources(db)) {
+    // Nothing to probe and nothing to disable: an import source's material
+    // arrives by hand, so leave it exactly as it is.
+    if (source.kind === 'import') continue;
     const check: SourceCheck = {
       sourceId: source.id, name: source.name, ok: false, itemCount: 0, detail: '',
     };
