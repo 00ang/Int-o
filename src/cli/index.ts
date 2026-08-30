@@ -5,7 +5,8 @@ import { openDb } from '../core/db.js';
 import {
   connectionsSince, counts, eventsForEntity, findEntityByName, getEvent, getItem, insertConnection,
   getSource, listSources, listThreads, searchItems, setConnectionVerdict, threadEvents,
-  topEntities, latestBrief, getThread, tradeEvents,
+  topEntities, latestBrief, getThread, tradeEvents, listForecasts, getForecast,
+  resolveForecast, calibration,
 } from '../core/store.js';
 import { buildBrief } from '../pipeline/brief.js';
 import { extract } from '../pipeline/extract.js';
@@ -18,6 +19,9 @@ import {
   importTradeFile, parseTradeFile, STOCK_ACT_FILING_DEADLINE_DAYS, type Chamber,
 } from '../pipeline/import-trades.js';
 import { readFileSync } from 'node:fs';
+import {
+  anchorForecasts, calibrationCurve, generateForecasts, marketComparison,
+} from '../pipeline/forecast.js';
 
 const cfg = loadConfig();
 const db = () => openDb(cfg.dbPath);
@@ -427,6 +431,159 @@ program
       const s = getSource(d, item.sourceId);
       console.log(`${item.publishedAt.slice(0, 10)}  [${s?.tier ?? '?'}] ${item.title}`);
       console.log(`            ${item.url}`);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Forecasting
+// ---------------------------------------------------------------------------
+
+const pct = (p: number) => `${(p * 100).toFixed(0)}%`;
+
+program
+  .command('forecast')
+  .description('Propose scoreable forecasts from active storylines (uses the API)')
+  .option('-t, --thread <id>', 'only this storyline')
+  .option('--min-events <n>', 'skip storylines thinner than this', Number, 3)
+  .option('--max-threads <n>', 'cap storylines per run', Number, 8)
+  .action(async (o) => {
+    const r = await generateForecasts(db(), cfg, {
+      threadId: o.thread,
+      minEvents: o.minEvents,
+      maxThreads: o.maxThreads,
+      onProgress: (title, stored) => console.log(`${String(stored).padStart(2)} from  ${title}`),
+    });
+    console.log(`\n${r.threadsConsidered} storylines considered, ${r.proposed} proposed, ${r.stored} stored.`);
+    // Say what was thrown away and why. A silent drop rate is how a forecasting
+    // loop quietly stops forecasting.
+    for (const x of r.rejected) console.log(`  rejected: ${x.reason}\n            ${x.question}`);
+    if (r.stored > 0) console.log('\nNext: throughline forecast:anchor   (put a market price beside each one)');
+  });
+
+program
+  .command('forecast:anchor')
+  .description('Match open forecasts to prediction markets already ingested')
+  .option('--min-score <n>', 'similarity floor for a match', Number)
+  .option('--reanchor', 're-match forecasts that already carry a price')
+  .action((o) => {
+    const r = anchorForecasts(db(), { minScore: o.minScore, reanchor: o.reanchor });
+    if (r.marketsAvailable === 0) {
+      console.log('No prediction-market snapshots in the corpus. Ingest polymarket/kalshi/metaculus first.');
+      return;
+    }
+    console.log(`${r.marketsAvailable} markets available. ${r.anchored} anchored, ${r.unmatched} left unmatched.`);
+    if (r.disagreements.length > 0) {
+      console.log('\nWhere we differ most from the crowd:');
+      for (const d of r.disagreements.slice(0, 10)) {
+        console.log(`  us ${pct(d.forecast.probability)} vs market ${pct(d.market.probability!)}  (${pct(d.gap)} apart)`);
+        console.log(`     ${d.forecast.question}`);
+        console.log(`     ${d.market.url}`);
+      }
+    }
+  });
+
+program
+  .command('forecasts')
+  .description('List forecasts')
+  .option('--open', 'only unresolved')
+  .option('--due', 'only unresolved and past their resolution date')
+  .option('--resolved', 'only resolved')
+  .option('-l, --limit <n>', 'how many', Number, 50)
+  .action((o) => {
+    const status = o.due ? 'due' : o.resolved ? 'resolved' : o.open ? 'open' : 'all';
+    const rows = listForecasts(db(), { status, limit: o.limit });
+    if (rows.length === 0) { console.log('No forecasts. Make some: throughline forecast'); return; }
+    for (const f of rows) {
+      const mkt = f.marketProbability === null ? '' : `  mkt ${pct(f.marketProbability)}`;
+      const outcome = f.outcome ? `  → ${f.outcome}${f.brierScore === null ? '' : ` (brier ${f.brierScore.toFixed(3)})`}` : '';
+      console.log(`${f.id}  ${f.resolvesAt.slice(0, 10)}  ${pct(f.probability).padStart(4)}${mkt}${outcome}`);
+      console.log(`  ${f.question}`);
+    }
+    const due = listForecasts(db(), { status: 'due', limit: 500 }).length;
+    if (due > 0 && status !== 'due') {
+      console.log(`\n${due} past their resolution date and unscored: throughline forecasts --due`);
+    }
+  });
+
+program
+  .command('forecast:show <id>')
+  .description('Read one forecast in full')
+  .action((id: string) => {
+    const d = db();
+    const f = getForecast(d, id);
+    if (!f) { console.error(`No forecast ${id}.`); process.exitCode = 1; return; }
+    console.log(f.question);
+    console.log(`\nOur estimate    ${pct(f.probability)}`);
+    if (f.marketProbability !== null) console.log(`Market          ${pct(f.marketProbability)}  ${f.marketUrl ?? ''}`);
+    console.log(`Resolves        ${f.resolvesAt.slice(0, 10)}`);
+    console.log(`\nResolution criteria\n  ${f.resolutionCriteria}`);
+    if (f.referenceClass) console.log(`\nReference class\n  ${f.referenceClass}`);
+    console.log(`\nReasoning\n  ${f.reasoning}`);
+    if (f.threadId) console.log(`\nStoryline       ${getThread(d, f.threadId)?.title ?? f.threadId}`);
+    if (f.evidenceEventIds.length > 0) {
+      console.log('\nEvidence');
+      for (const id of f.evidenceEventIds) {
+        const ev = getEvent(d, id);
+        if (ev) console.log(`  ${ev.occurredAt.slice(0, 10)}  ${ev.summary}`);
+      }
+    }
+    if (f.outcome) {
+      console.log(`\nResolved ${f.resolvedAt?.slice(0, 10)} as ${f.outcome}` +
+        (f.brierScore === null ? '' : `, Brier ${f.brierScore.toFixed(4)}`));
+    }
+  });
+
+program
+  .command('forecast:resolve <id> <outcome>')
+  .description('Record what actually happened and score it')
+  .action((id: string, outcome: string) => {
+    if (!['yes', 'no', 'ambiguous'].includes(outcome)) {
+      console.error('Outcome must be yes, no or ambiguous.');
+      process.exitCode = 1;
+      return;
+    }
+    const d = db();
+    const f = getForecast(d, id);
+    if (!f) { console.error(`No forecast ${id}.`); process.exitCode = 1; return; }
+    const brier = resolveForecast(d, id, outcome as 'yes' | 'no' | 'ambiguous');
+    console.log(`${f.question}`);
+    console.log(`  said ${pct(f.probability)}, resolved ${outcome}` +
+      (brier === null ? ' (not scored)' : `, Brier ${brier.toFixed(4)}`));
+    if (brier !== null && f.marketProbability !== null) {
+      const marketBrier = (f.marketProbability - (outcome === 'yes' ? 1 : 0)) ** 2;
+      const verdict = brier < marketBrier ? 'we beat the market' : brier > marketBrier ? 'the market beat us' : 'tied with the market';
+      console.log(`  market said ${pct(f.marketProbability)}, Brier ${marketBrier.toFixed(4)} - ${verdict}`);
+    }
+  });
+
+program
+  .command('calibration')
+  .description('How well the forecasts have actually scored')
+  .action(() => {
+    const d = db();
+    const { count, meanBrier } = calibration(d);
+    if (count === 0) {
+      console.log('Nothing resolved yet. Score some: throughline forecasts --due');
+      return;
+    }
+    console.log(`${count} resolved, mean Brier ${meanBrier!.toFixed(4)}.`);
+    console.log('(0.25 is what guessing 50% every time gets you. Lower is better.)\n');
+
+    console.log('said        n   we said   happened');
+    for (const b of calibrationCurve(listForecasts(d, { status: 'resolved', limit: 1000 }))) {
+      const label = `${pct(b.from)}-${pct(b.to)}`.padEnd(10);
+      if (b.count === 0) { console.log(`${label} ${String(0).padStart(3)}         -          -`); continue; }
+      console.log(`${label} ${String(b.count).padStart(3)}     ${pct(b.meanPredicted).padStart(5)}      ${pct(b.observedYesRate).padStart(5)}`);
+    }
+
+    const m = marketComparison(listForecasts(d, { status: 'resolved', limit: 1000 }));
+    if (m.count > 0) {
+      console.log(`\nAgainst the market, on the ${m.count} anchored and resolved:`);
+      console.log(`  us     ${m.ourBrier!.toFixed(4)}`);
+      console.log(`  market ${m.marketBrier!.toFixed(4)}`);
+      console.log(m.ourBrier! < m.marketBrier!
+        ? '  We are ahead. Keep scoring; the sample is what makes this real.'
+        : '  The market is ahead. That is the honest answer until it is not.');
     }
   });
 

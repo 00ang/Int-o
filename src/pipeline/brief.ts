@@ -4,8 +4,9 @@ import { newId } from '../core/ids.js';
 import { prose } from '../core/llm.js';
 import {
   connectionsSince, getEntity, getEvent, getItem, getSource, insertBrief, itemsSince,
+  listForecasts,
 } from '../core/store.js';
-import type { Brief, Connection, Event, Thread } from '../core/types.js';
+import type { Brief, Connection, Event, Forecast, Thread } from '../core/types.js';
 import { activeThreadsSince } from './threads.js';
 
 /**
@@ -61,6 +62,8 @@ function fmtConnection(db: DB, c: Connection): string {
   ].filter(Boolean).join('\n');
 }
 
+const pct = (p: number) => `${(p * 100).toFixed(0)}%`;
+
 /** Markdown assembled in code so every claim keeps its link. */
 function renderMarkdown(
   db: DB,
@@ -69,6 +72,7 @@ function renderMarkdown(
   threads: Thread[],
   connections: Connection[],
   stats: { items: number; events: number },
+  forecasts: { open: Forecast[]; due: Forecast[] } = { open: [], due: [] },
 ): string {
   const lines: string[] = [
     `# Brief - ${forDate}`,
@@ -120,6 +124,35 @@ function renderMarkdown(
       );
     }
     lines.push('');
+  }
+
+  if (forecasts.open.length || forecasts.due.length) {
+    lines.push('## Forecasts', '');
+    lines.push(
+      '_Each carries a resolution criterion and a date, and gets a Brier score when it ' +
+      'resolves. Where a market price is shown it sits beside our estimate, never blended ' +
+      'into it - the gap is the point._',
+      '',
+    );
+    for (const f of forecasts.open.slice(0, 12)) {
+      const market = f.marketProbability === null
+        ? ''
+        : ` &nbsp; market ${pct(f.marketProbability)}${f.marketUrl ? ` ([market](${f.marketUrl}))` : ''}`;
+      lines.push(
+        `- **${pct(f.probability)}** - ${f.question}${market}`,
+        `  - Resolves ${f.resolvesAt.slice(0, 10)}: ${f.resolutionCriteria}`,
+      );
+    }
+    lines.push('');
+    if (forecasts.due.length) {
+      // An unscored forecast past its date is the whole loop stalled, so it
+      // goes in the brief rather than waiting to be noticed.
+      lines.push(
+        `**${forecasts.due.length} past their resolution date and unscored.** ` +
+        'Run `throughline forecasts --due`.',
+        '',
+      );
+    }
   }
 
   if (threads.length) {
@@ -185,9 +218,14 @@ export async function buildBrief(
     })
     : '_Nothing ingested in this window._';
 
+  const forecasts = {
+    open: listForecasts(db, { status: 'open', limit: 12 }),
+    due: listForecasts(db, { status: 'due', limit: 100 }),
+  };
+
   const markdown = renderMarkdown(
     db, forDate, narrative, threads, topConnections,
-    { items: items.length, events: eventCount },
+    { items: items.length, events: eventCount }, forecasts,
   );
 
   const brief: Brief = {

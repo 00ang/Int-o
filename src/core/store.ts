@@ -531,6 +531,62 @@ export function openForecasts(db: DB): Forecast[] {
     .map(rowToForecast);
 }
 
+export function getForecast(db: DB, id: string): Forecast | null {
+  const r = db.prepare('SELECT * FROM forecasts WHERE id = ?').get(id);
+  return r ? rowToForecast(r as any) : null;
+}
+
+/**
+ * Forecasts by state. `due` is the one that matters operationally: an unresolved
+ * forecast past its date is the whole scoring loop stalled, and nothing else
+ * surfaces it.
+ */
+export function listForecasts(
+  db: DB,
+  opts: { status?: 'open' | 'resolved' | 'due' | 'all'; at?: Date; limit?: number } = {},
+): Forecast[] {
+  const { status = 'all', limit = 200 } = opts;
+  const at = (opts.at ?? new Date()).toISOString();
+  const sql = {
+    open: 'SELECT * FROM forecasts WHERE resolved_at IS NULL ORDER BY resolves_at ASC LIMIT ?',
+    due: 'SELECT * FROM forecasts WHERE resolved_at IS NULL AND resolves_at <= ? ORDER BY resolves_at ASC LIMIT ?',
+    resolved: 'SELECT * FROM forecasts WHERE resolved_at IS NOT NULL ORDER BY resolved_at DESC LIMIT ?',
+    all: 'SELECT * FROM forecasts ORDER BY resolves_at ASC LIMIT ?',
+  }[status];
+  const rows = status === 'due' ? db.prepare(sql).all(at, limit) : db.prepare(sql).all(limit);
+  return rows.map(rowToForecast);
+}
+
+/**
+ * Record the crowd price beside our estimate.
+ *
+ * Beside, never blended in. Averaging the two would erase the only thing the
+ * anchor is for: knowing where we disagreed, and later who was right.
+ */
+export function setForecastMarket(
+  db: DB,
+  id: string,
+  marketProbability: number | null,
+  marketUrl: string | null,
+): void {
+  db.prepare('UPDATE forecasts SET market_probability = ?, market_url = ? WHERE id = ?')
+    .run(marketProbability, marketUrl, id);
+}
+
+/** Items from the given sources, newest first. Used to read market snapshots back. */
+export function marketItems(db: DB, sourceIds: string[], limit = 2000): Item[] {
+  if (sourceIds.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT * FROM items
+        WHERE source_id IN (${sourceIds.map(() => '?').join(',')})
+        ORDER BY fetched_at DESC
+        LIMIT ?`,
+    )
+    .all(...sourceIds, limit)
+    .map(rowToItem);
+}
+
 /**
  * Resolve a forecast and score it. Brier is (p - outcome)^2, lower is better;
  * scoring every call is the only thing that separates forecasting from opining.

@@ -60,9 +60,9 @@ disables the rest. Run it on your own machine before your first real ingest.
 Expect a meaningful number to fail - feed URLs rot constantly, and the wire
 services in particular move theirs.
 
-Everything else in the system is verified: 113 tests cover parsing, entity
-resolution, the detectors, the scoring and the trade import, all against
-recorded fixtures.
+Everything else in the system is verified: 162 tests cover parsing, entity
+resolution, the detectors, the scoring, the trade import and the forecasting
+loop, all against recorded fixtures.
 
 ---
 
@@ -86,6 +86,12 @@ recorded fixtures.
 | `verdict <id> <sound\|coincidence\|wrong>` | Record your judgement | no |
 | `entity <name>` / `entities` | What a party has been involved in | no |
 | `search <query>` | Full-text over everything ingested | no |
+| `forecast [-t thread]` | Propose scoreable forecasts from storylines | **yes** |
+| `forecast:anchor` | Match forecasts to ingested market prices | no |
+| `forecasts [--open\|--due\|--resolved]` | List forecasts | no |
+| `forecast:show <id>` | Read one in full | no |
+| `forecast:resolve <id> <yes\|no\|ambiguous>` | Record the outcome and score it | no |
+| `calibration` | How well the forecasts have scored | no |
 | `brief:last`, `stats` | Read cached brief, corpus size | no |
 
 ---
@@ -139,6 +145,8 @@ pipeline/    extract (LLM, schema'd)  → Event    dated assertion, typed partie
              detectors/ (pure SQL)    → Connection  the checkable half
              link (LLM, capped)       → Connection  the speculative half
              threads (LLM)            → Thread   persistent storyline
+             forecast (LLM proposes,  → Forecast scored against reality
+                       code validates)
              brief (code + LLM prose) → Brief
 ```
 
@@ -228,6 +236,54 @@ congressional trading.**
 
 ---
 
+## Forecasting
+
+The rest of this system reconstructs what happened. This is the only part that
+says what will happen, so it carries the strictest rule in the codebase: every
+forecast is scored.
+
+```bash
+throughline forecast          # propose questions from active storylines
+throughline forecast:anchor   # put a market price beside each one
+throughline forecasts --due   # what is past its date and unscored
+throughline forecast:resolve <id> yes
+throughline calibration       # how you have actually done
+```
+
+**Questions must be gradeable or they are not stored.** A proposal is dropped
+if it resolves in the past, resolves so far out that scoring it teaches you
+nothing in time, sits at a probability that makes it a statement rather than a
+forecast, or arrives without a resolution criterion or a reference class. The
+drop reasons are printed, because a silent drop rate is how a forecasting loop
+quietly stops forecasting.
+
+**Anchoring is code, not a model call.** Deciding that our question and a
+market's question are the same question is exactly the judgement that reads
+fine in prose and is wrong a third of the time, and a forecast anchored to the
+wrong market corrupts the one number meant to be an independent check on ours.
+So `forecast:anchor` is weighted token overlap against the markets already
+ingested, with a floor and a close-date check, and it declines rather than
+reaches. Unmatched is a normal outcome and is reported as one.
+
+**The market price sits beside our estimate, never blended into it.** Averaging
+the two would erase the only thing the anchor is for: seeing where we disagree
+with the crowd, and finding out later who was right. `calibration` scores both.
+
+**Calibration is a curve, not a number.** The mean Brier says how good the
+forecasts were; the bucket table says *how* they were wrong, which is the part
+you can act on:
+
+```
+said        n   we said   happened
+0%-20%       1       10%         0%
+20%-40%      3       30%        33%
+40%-60%      2       45%        50%
+60%-80%      4       70%        75%
+80%-100%     2       90%        50%     ← overconfident up here
+```
+
+---
+
 ## Cost
 
 `extract` makes one call per item; `threads:update` and `brief` make a handful
@@ -269,25 +325,24 @@ condition of their access policies.
 
 ## Status and what's next
 
-Built: the core engine, the CLI and the trade import path. Verified: 113 tests
-over parsing, entity resolution, detectors, scoring and import. Unverified: the
-feed URLs, which need `sources:check --fix` on a networked machine.
+Built: the core engine, the CLI, the trade import path and the forecasting
+loop. Verified: 162 tests over parsing, entity resolution, detectors, scoring,
+import, market matching and calibration. Unverified: the feed URLs, which need
+`sources:check --fix` on a networked machine.
 
 Next, in order:
 
 1. **`sources:check --fix`**, then prune what fails. Nothing downstream is
    worth much until the inputs are real.
-2. **Forecasting** - the schema and Brier scoring are already in
-   (`forecasts` table, `resolveForecast`, `calibration`). What's missing is
-   question generation from live threads and the fetch that anchors each
-   estimate to a matching Polymarket/Kalshi/Metaculus price. Every forecast
-   carries a resolution criterion and gets scored, because a forecast nobody
-   scores is just an opinion with a number on it.
-3. **Web app** - Next.js over the same SQLite/libSQL store: storyline pages,
+2. **Web app** - Next.js over the same SQLite/libSQL store: storyline pages,
    entity pages, the connection graph, search.
-4. **PTR PDF parsing**, so congressional trade detail needs no external
+3. **PTR PDF parsing**, so congressional trade detail needs no external
    dataset. `import:trades` covers this today from any source that has already
    parsed them.
+4. **Forecast generation against live threads.** The loop is built and tested,
+   but `forecast` has never been run against a real corpus with an API key -
+   the prompt's judgement about what makes a scoreable question is the part
+   that needs contact with reality.
 
 ---
 

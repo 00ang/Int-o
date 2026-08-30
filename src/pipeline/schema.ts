@@ -105,3 +105,38 @@ export const ThreadSynthesisSchema = z.object({
   summary: z.string().describe('Where the storyline currently stands.'),
   openQuestions: z.array(z.string()).describe('What to watch for next.'),
 });
+
+// ---------------------------------------------------------------------------
+// Forecasts
+// ---------------------------------------------------------------------------
+
+/**
+ * A forecast the model is allowed to propose.
+ *
+ * Every field here exists to make the estimate scoreable later. A question
+ * without a resolution criterion cannot be graded, and a forecast nobody grades
+ * is an opinion with a number on it - so the schema refuses to represent one.
+ */
+export const ProposedForecastSchema = z.object({
+  question: z.string()
+    .describe('A question answerable yes or no by the resolution date. Names the specific thing that must happen.'),
+  resolutionCriteria: z.string()
+    .describe('What observation settles this, and where it would be seen. Specific enough that two people reading it would agree on the answer.'),
+  resolvesAt: z.string()
+    .describe('The date by which this resolves, YYYY-MM-DD. Must be in the future.'),
+  probability: z.number().min(0.01).max(0.99)
+    .describe('Your probability that the answer is yes.'),
+  referenceClass: z.string()
+    .describe('The class of similar past cases this rate is anchored to, and roughly how often they went yes. This is what stops the number being pulled from air.'),
+  reasoning: z.string()
+    .describe('What in the evidence moves this away from the base rate, in one or two sentences.'),
+  evidenceEventIndexes: z.array(z.number().int())
+    .describe('Indexes into the supplied event list that informed the estimate.'),
+});
+
+export const ProposedForecastsSchema = z.object({
+  forecasts: z.array(ProposedForecastSchema)
+    .describe('Zero or more forecasts. An empty list is correct when the storyline supports no question that can be scored.'),
+});
+
+export type ProposedForecast = z.infer<typeof ProposedForecastSchema>;
