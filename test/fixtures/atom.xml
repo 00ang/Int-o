@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>EDGAR Latest Filings</title>
+  <entry>
+    <title>4 - SMITH JANE Q (0001234567) (Reporting)</title>
+    <link rel="alternate" type="text/html" href="https://www.sec.gov/Archives/edgar/data/1234567/000123456726000012-index.htm"/>
+    <id>urn:tag:sec.gov,2008:accession-number=0001234567-26-000012</id>
+    <updated>2026-08-26T16:30:00-04:00</updated>
+    <summary type="html">Form 4 - Statement of changes in beneficial ownership</summary>
+  </entry>
+  <entry>
+    <title>8-K - VERTEX DEFENSE SYSTEMS INC (0000998877) (Filer)</title>
+    <link rel="alternate" type="text/html" href="https://www.sec.gov/Archives/edgar/data/998877/000099887726000044-index.htm"/>
+    <id>urn:tag:sec.gov,2008:accession-number=0000998877-26-000044</id>
+    <updated>2026-08-27T09:05:00-04:00</updated>
+    <summary type="html">Form 8-K - Current report</summary>
+  </entry>
+</feed>

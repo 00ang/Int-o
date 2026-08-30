@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Example Wire</title>
+    <item>
+      <title>Treasury sanctions three shipping firms over oil transfers</title>
+      <link>https://example.org/a</link>
+      <guid isPermaLink="false">wire-0001</guid>
+      <pubDate>Wed, 27 Aug 2026 09:14:00 GMT</pubDate>
+      <dc:creator>A. Reporter</dc:creator>
+      <description>&lt;p&gt;The Treasury Department designated three firms.&lt;/p&gt;</description>
+      <content:encoded><![CDATA[<p>The Treasury Department designated three shipping firms on Wednesday, accusing them of moving sanctioned crude. The measures freeze US assets and bar American counterparties.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>Second story with no body</title>
+      <link>https://example.org/b</link>
+      <guid isPermaLink="false">wire-0002</guid>
+      <pubDate>Wed, 27 Aug 2026 11:00:00 GMT</pubDate>
+      <description>Short summary only.</description>
+    </item>
+    <item>
+      <title>Duplicate guid should collapse</title>
+      <link>https://example.org/b2</link>
+      <guid isPermaLink="false">wire-0002</guid>
+      <pubDate>Wed, 27 Aug 2026 11:30:00 GMT</pubDate>
+      <description>Repeat.</description>
+    </item>
+  </channel>
+</rss>
