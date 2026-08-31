@@ -14,6 +14,18 @@ export interface Config {
   anthropicApiKey: string | null;
   /** Required only by identity-linked API keys, which reject calls without it. */
   anthropicWorkspaceId: string | null;
+  /**
+   * Which backend serves model calls.
+   *
+   * `anthropic` bills per token against a credit balance. `claude-cli` runs the
+   * same models through a Claude Code subscription instead, so it costs nothing
+   * at the margin - at the price of sharing that subscription's rate limit.
+   */
+  llmProvider: 'anthropic' | 'claude-cli';
+  /** Model alias for the CLI backend: opus, sonnet, haiku. */
+  cliModel: string;
+  /** Model alias the CLI backend uses for triage. */
+  cliTriageModel: string;
   model: string;
   /**
    * Triage reads every item, so it runs on the cheapest model that can hold a
@@ -43,6 +55,9 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       `all-int/0.1 (personal research aggregator; ${contactEmail})`,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? null,
     anthropicWorkspaceId: process.env.ANTHROPIC_WORKSPACE_ID ?? null,
+    llmProvider: process.env.ALLINT_LLM_PROVIDER === 'claude-cli' ? 'claude-cli' : 'anthropic',
+    cliModel: process.env.ALLINT_CLI_MODEL ?? 'sonnet',
+    cliTriageModel: process.env.ALLINT_CLI_TRIAGE_MODEL ?? 'haiku',
     model: process.env.ALLINT_MODEL ?? 'claude-opus-5',
     triageModel: process.env.ALLINT_TRIAGE_MODEL ?? 'claude-haiku-4-5-20251001',
     triageBatchSize: Number(process.env.ALLINT_TRIAGE_BATCH_SIZE ?? 12),

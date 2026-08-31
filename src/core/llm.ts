@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { ZodType } from 'zod';
 import type { Config } from './config.js';
+import { proseViaCli, structuredViaCli } from './llm-cli.js';
 
 /**
  * The single place the Anthropic API is called.
@@ -52,6 +53,8 @@ export interface StructuredOptions {
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
   /** Overrides the configured model. Triage runs on a cheaper one than analysis. */
   model?: string;
+  /** Model alias when the CLI backend is in use. */
+  cliModel?: string;
   /**
    * Adaptive thinking, on by default. Turn it off for mechanical classification
    * and for the small models, which do not support it.
@@ -60,6 +63,17 @@ export interface StructuredOptions {
 }
 
 export async function structured<T>(cfg: Config, opts: StructuredOptions): Promise<T> {
+  // The CLI backend runs the same models through a subscription rather than a
+  // credit balance. It validates against this same schema after the fact, so
+  // the contract at this boundary is identical either way.
+  if (cfg.llmProvider === 'claude-cli') {
+    return structuredViaCli<T>({
+      system: opts.system,
+      user: opts.user,
+      schema: opts.schema,
+      model: opts.cliModel ?? cfg.cliModel,
+    });
+  }
   const anthropic = getClient(cfg);
 
   const message = await anthropic.messages.parse({
@@ -92,6 +106,9 @@ export async function prose(
   cfg: Config,
   opts: { system: string; user: string; maxTokens?: number; effort?: StructuredOptions['effort'] },
 ): Promise<string> {
+  if (cfg.llmProvider === 'claude-cli') {
+    return proseViaCli({ system: opts.system, user: opts.user, model: cfg.cliModel });
+  }
   const anthropic = getClient(cfg);
   const message = await anthropic.messages.create({
     model: cfg.model,

@@ -112,6 +112,7 @@ export async function triageBatch(
     schema: TriageBatchSchema,
     maxTokens: 8_000,
     model: cfg.triageModel,
+    cliModel: cfg.cliTriageModel,
     // Classification against a fixed rubric. The small models support neither
     // adaptive thinking nor the effort parameter, and need neither here.
     thinking: false,

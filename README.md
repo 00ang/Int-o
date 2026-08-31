@@ -378,6 +378,46 @@ said        n   we said   happened
 
 ---
 
+## Running without API credit
+
+The API bills per token against a credit balance. Most of this system never
+touches it:
+
+| Free, always | |
+|---|---|
+| `ingest`, `sources:check`, `bodies` | fetching |
+| `ptr:fetch`, `import:trades` | congressional trades, including the PDF parsing |
+| `graph:build`, `activate` | the association map and firing it |
+| `link` without `-H` | the deterministic detectors |
+| `search`, `queue`, `entity`, `trades`, `threads`, `stats`, `calibration` | reading |
+| the entire web app | including the map and every chart |
+
+Only judgement costs anything: `triage`, `extract`, `synthesize`,
+`threads:update`, `brief`, `forecast`, and `link -H`.
+
+For those, set `ALLINT_LLM_PROVIDER=claude-cli` and they run through a Claude
+Code subscription instead of a credit balance - the same models, nothing billed
+per token. The trade is a shared rate limit: the CLI competes with your
+interactive sessions and will refuse when the API would not. Those refusals are
+transient by construction and no item is retired over one.
+
+One thing genuinely differs. The API constrains generation to the schema, so
+malformed output is impossible. The CLI returns text, so the schema becomes a
+check applied afterwards rather than a guarantee applied during - every response
+is still parsed and validated against the same Zod schema, and a response that
+fails is an error rather than a partial result. The contract at the boundary is
+identical; only where it is enforced has moved.
+
+**Local models were tried and are not good enough for the judgement stages.**
+`qwen3:4b` marked every item notable, returned lowercased headlines as topics,
+and produced "insider trading or regulatory violation" as an angle - an
+accusation, which the design forbids outright. `mistral:7b` discriminated better
+but returned category labels ("Economy", "Finance") where the prompt demands
+specifics, called a flood notable when the prompt names disasters as mundane,
+missed the regulatory item that was the actual case, and took 29 seconds an
+item. Triage is a judgement about what a text is not saying; that is not a task
+a 4B or 7B model does.
+
 ## Cost
 
 `extract` makes one call per item; `threads:update` and `brief` make a handful

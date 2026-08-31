@@ -93,7 +93,7 @@ export interface ExtractResult {
  * existed.
  */
 export function isTransient(message: string): boolean {
-  return /credit balance|rate.?limit|429|overloaded|529|5\d\d\s|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|network|timeout|authentication_error|invalid x-api-key|permission_error/i
+  return /credit balance|rate.?limit|429|overloaded|529|5\d\d\s|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|network|timed? ?out|authentication_error|invalid x-api-key|permission_error|session limit|usage limit|could not run|exited \d+/i
     .test(message);
 }
 
