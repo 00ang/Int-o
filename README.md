@@ -1,4 +1,4 @@
-# throughline
+# all-int
 
 A personal intelligence system for politics, geopolitics, business and tech.
 
@@ -36,8 +36,8 @@ construction](#honest-by-construction).
 npm install
 npm run build
 
-export THROUGHLINE_DB=./data/throughline.db
-export THROUGHLINE_CONTACT_EMAIL=you@example.com   # required by SEC and others
+export ALLINT_DB=./data/allint.db
+export ALLINT_CONTACT_EMAIL=you@example.com   # required by SEC and others
 export ANTHROPIC_API_KEY=sk-ant-...                # extraction, threads, brief
 
 npx tsx src/cli/index.ts demo      # see it work: no key, no network
@@ -75,6 +75,7 @@ loop, all against recorded fixtures.
 | `sources` / `sources:check [--fix]` | List / probe sources | no |
 | `ingest [--all] [-s id...]` | Fetch new items from due sources | no |
 | `import:trades <file> [-n]` | Import disclosed trades from CSV/JSON | no |
+| `ptr:fetch [-y year] [-l n]` | Read congressional PTR filing PDFs and import the trades | no |
 | `triage [-l n]` | Judge what deserves attention | **yes**, cheaply |
 | `queue [--notable] [--angles]` | The reading list: what survived triage | no |
 | `investigate <id> [-H]` | Take a second look at one item | only with `-H` |
@@ -216,10 +217,10 @@ are in per-filing PDFs, many of them scans without a text layer. That is why
 a community dataset, a vendor API, your own script - hand the result to it:
 
 ```bash
-throughline import:trades house-trades.json --dry-run   # see what it will do
-throughline import:trades house-trades.json
-throughline link                                        # now it has trades to join
-throughline trades --late                               # who filed past the deadline
+all-int import:trades house-trades.json --dry-run   # see what it will do
+all-int import:trades house-trades.json
+all-int link                                        # now it has trades to join
+all-int trades --late                               # who filed past the deadline
 ```
 
 CSV or JSON, no mapping file. Column names are recognised across the shapes
@@ -261,11 +262,11 @@ says what will happen, so it carries the strictest rule in the codebase: every
 forecast is scored.
 
 ```bash
-throughline forecast          # propose questions from active storylines
-throughline forecast:anchor   # put a market price beside each one
-throughline forecasts --due   # what is past its date and unscored
-throughline forecast:resolve <id> yes
-throughline calibration       # how you have actually done
+all-int forecast          # propose questions from active storylines
+all-int forecast:anchor   # put a market price beside each one
+all-int forecasts --due   # what is past its date and unscored
+all-int forecast:resolve <id> yes
+all-int calibration       # how you have actually done
 ```
 
 **Questions must be gradeable or they are not stored.** A proposal is dropped
@@ -312,8 +313,8 @@ Ingesting a few hundred items a day, this is dollars per day, not cents. Both
 knobs are environment variables:
 
 ```bash
-export THROUGHLINE_MODEL=claude-sonnet-5   # materially cheaper per item
-export THROUGHLINE_EXTRACT_LIMIT=40        # cap items per extraction run
+export ALLINT_MODEL=claude-sonnet-5   # materially cheaper per item
+export ALLINT_EXTRACT_LIMIT=40        # cap items per extraction run
 ```
 
 Extraction is mechanical work over short inputs and degrades gracefully to a
@@ -326,20 +327,20 @@ actually shows.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `THROUGHLINE_DB` | Database path | `./data/throughline.db` |
-| `THROUGHLINE_CONTACT_EMAIL` | Identifies you in the User-Agent | none |
+| `ALLINT_DB` | Database path | `./data/allint.db` |
+| `ALLINT_CONTACT_EMAIL` | Identifies you in the User-Agent | none |
 | `ANTHROPIC_API_KEY` | Extraction, threads, brief | none |
 | `ANTHROPIC_WORKSPACE_ID` | Only for an identity-linked key, which the API rejects without it | none |
-| `THROUGHLINE_TRIAGE_MODEL` | Model for triage, which reads everything | `claude-haiku-4-5-20251001` |
-| `THROUGHLINE_TRIAGE_BATCH_SIZE` | Items judged per call | 12 |
-| `THROUGHLINE_TRIAGE_LIMIT` | Items per triage run | 120 |
-| `THROUGHLINE_MODEL` | Model id | `claude-opus-5` |
-| `THROUGHLINE_EXTRACT_LIMIT` | Items per extraction run | 40 |
-| `THROUGHLINE_HOST_DELAY_MS` | Politeness delay per host | 400 |
+| `ALLINT_TRIAGE_MODEL` | Model for triage, which reads everything | `claude-haiku-4-5-20251001` |
+| `ALLINT_TRIAGE_BATCH_SIZE` | Items judged per call | 12 |
+| `ALLINT_TRIAGE_LIMIT` | Items per triage run | 120 |
+| `ALLINT_MODEL` | Model id | `claude-opus-5` |
+| `ALLINT_EXTRACT_LIMIT` | Items per extraction run | 40 |
+| `ALLINT_HOST_DELAY_MS` | Politeness delay per host | 400 |
 | `CONGRESS_GOV_API_KEY` | Congress.gov (free at api.data.gov) | none |
 | `COURTLISTENER_API_TOKEN` | CourtListener | none |
 
-Set `THROUGHLINE_CONTACT_EMAIL`. SEC EDGAR and several other government hosts
+Set `ALLINT_CONTACT_EMAIL`. SEC EDGAR and several other government hosts
 throttle or refuse traffic that does not identify itself, and doing so is a
 condition of their access policies.
 
@@ -352,21 +353,53 @@ loop. Verified: 162 tests over parsing, entity resolution, detectors, scoring,
 import, market matching and calibration. Unverified: the feed URLs, which need
 `sources:check --fix` on a networked machine.
 
-Next, in order:
+Shipped since:
 
-1. **`sources:check --fix`**, then prune what fails. Nothing downstream is
-   worth much until the inputs are real.
-2. **Web app** - Next.js over the same SQLite/libSQL store: storyline pages,
-   entity pages, the connection graph, search.
-3. **PTR PDF parsing**, so congressional trade detail needs no external
-   dataset. `import:trades` covers this today from any source that has already
-   parsed them.
-4. **Forecast generation against live threads.** The loop is built and tested,
-   but `forecast` has never been run against a real corpus with an API key -
-   the prompt's judgement about what makes a scoreable question is the part
-   that needs contact with reality.
+1. **`sources:check --fix`** - 52 of 83 feeds confirmed live against their hosts.
+2. **Triage and `investigate`** - the judgement stage, and the second look that
+   only runs when a person asks for it. Not on the original list; it replaced
+   the assumption that everything should be extracted.
+3. **The web app** - Next.js over the same SQLite store, in `web/`. The reading
+   queue, item dossiers, party pages, full-text search, and the investigate
+   button wired to the same engine the CLI runs.
+4. **PTR PDF parsing** - `ptr:fetch` reads the Clerk's filing PDFs directly, so
+   congressional trade detail no longer needs an outside dataset. Roughly one
+   filing in eight is a scan with no text layer; those are counted and
+   reported, never silently skipped.
+5. **Forecasting against live threads** - run against a real corpus for the
+   first time. The loop proposes, the validator drops what cannot be scored,
+   and `forecast:anchor` declines to match rather than reaching.
+
+Still open, in order:
+
+1. **Duplicate collapse.** Several outlets covering one event are judged
+   independently and appear as separate sheets. Storyline work.
+2. **The award side of the detectors.** 111 trade events span 2025-26 but every
+   extracted award is 1978-2018, so `trade-then-award` has never had two halves
+   in the same window. Gating extraction on triage starves it: a routine
+   contract award reads as mundane news and is exactly the join material the
+   detectors need. Structured record feeds should bypass the news gate the way
+   market snapshots already do.
+3. **OCR for scanned filings**, or an outside dataset for that eighth.
+4. **Resolving forecasts.** Six are open; none has come due.
 
 ---
+
+## The web app
+
+```bash
+npm run build          # the engine, including the .d.ts the app imports
+npm run web            # http://localhost:3005
+```
+
+`web/` is a Next.js app over the same SQLite file. It reads through its own
+read-only handle - a page render must never spend money - and the one route
+that writes, `POST /api/investigate/:id`, imports the engine from `dist/`
+rather than reimplementing it, so the app cannot drift from the tested path.
+
+It looks like a declassified working file because that is what it is: a typed
+form, a manila ground, and stamps that carry the verdict. The classification
+banner is a register, not a claim.
 
 ## Development
 

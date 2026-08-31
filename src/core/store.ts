@@ -103,6 +103,42 @@ export function getItem(db: DB, id: string): Item | null {
  * This is the widest queue in the system - every item passes through it - which
  * is why triage runs batched on a cheap model.
  */
+/**
+ * Congressional PTR filings on file, newest first.
+ *
+ * The House index adapter stores the Clerk's own row on `items.raw`, so the
+ * document id and filing year are already here - there is no second index to
+ * fetch before the filings themselves can be read. Only type `P` filings carry
+ * transactions; the annual and amendment types are a different form.
+ */
+export function ptrFilings(
+  db: DB,
+  opts: { year?: string; limit?: number } = {},
+): Array<{ docId: string; year: string; filer: string; filingDate: string }> {
+  const rows = db.prepare(
+    `SELECT raw FROM items
+      WHERE source_id = 'house-disclosures' AND raw IS NOT NULL
+      ORDER BY published_at DESC LIMIT @scan`,
+  ).all({ scan: (opts.limit ?? 25) * 6 }) as Array<{ raw: string }>;
+
+  const out: Array<{ docId: string; year: string; filer: string; filingDate: string }> = [];
+  for (const r of rows) {
+    let j: Record<string, string>;
+    try { j = JSON.parse(r.raw); } catch { continue; }
+    if (j.filingType !== 'P' || !j.docId) continue;
+    if (opts.year && j.year !== opts.year) continue;
+    const name = [j.prefix, j.first, j.last, j.suffix].filter(Boolean).join(' ').trim();
+    out.push({
+      docId: j.docId,
+      year: j.year ?? String(new Date().getFullYear()),
+      filer: name,
+      filingDate: j.filingDate ?? '',
+    });
+    if (out.length >= (opts.limit ?? 25)) break;
+  }
+  return out;
+}
+
 export function itemsAwaitingTriage(db: DB, limit: number): Item[] {
   return db
     .prepare(

@@ -12,7 +12,7 @@ import { parseFeed } from './rss.js';
  * the keys that let a filing join to press coverage of the same company.
  *
  * SEC access policy requires a User-Agent naming a real contact; set
- * THROUGHLINE_CONTACT_EMAIL or requests will be throttled or refused.
+ * ALLINT_CONTACT_EMAIL or requests will be throttled or refused.
  */
 
 /** EDGAR titles look like: "4 - Doe John (0001234567) (Reporting)". */

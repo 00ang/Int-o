@@ -149,7 +149,7 @@ function renderMarkdown(
       // goes in the brief rather than waiting to be noticed.
       lines.push(
         `**${forecasts.due.length} past their resolution date and unscored.** ` +
-        'Run `throughline forecasts --due`.',
+        'Run `all-int forecasts --due`.',
         '',
       );
     }

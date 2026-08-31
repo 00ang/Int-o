@@ -31,7 +31,7 @@ export async function fetchSource(source: Source, cfg: Config): Promise<Item[]> 
     case 'import':
       // Written by `import:trades`. There is no endpoint behind it; re-running
       // the import is how it gets new material.
-      throw new Error(`Source ${source.id} is import-only; run 'throughline import:trades <file>'`);
+      throw new Error(`Source ${source.id} is import-only; run 'all-int import:trades <file>'`);
     case 'json-api':
       // Congress.gov and CourtListener each need their own key handling; until
       // those adapters exist, say so rather than silently skipping.

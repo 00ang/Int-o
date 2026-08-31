@@ -256,9 +256,12 @@ export function normalizeAction(raw: string | null | undefined): TradeAction {
   // "sale" - and `sale_full` is exactly how the House dataset spells it.
   const s = (raw ?? '').trim().toLowerCase().replace(/[_/]+/g, ' ');
   if (!s) return 'other';
-  if (/^p$/.test(s) || /purchas|\bbuy\b|bought|acquisit/.test(s)) return 'purchase';
-  if (/^s$/.test(s) || /\bsale\b|\bsell\b|\bsold\b|dispos/.test(s)) return 'sale';
-  if (/exchang/.test(s)) return 'exchange';
+  // The Clerk's PTR forms spell direction as a bare code that can carry a
+  // qualifier - "S (partial)" is a sale, not an unclassified event - so the
+  // single-letter codes are matched on a word boundary rather than end-of-string.
+  if (/^p(\s|$)/.test(s) || /purchas|\bbuy\b|bought|acquisit/.test(s)) return 'purchase';
+  if (/^s(\s|$)/.test(s) || /\bsale\b|\bsell\b|\bsold\b|dispos/.test(s)) return 'sale';
+  if (/^e(\s|$)/.test(s) || /exchang/.test(s)) return 'exchange';
   return 'other';
 }
 

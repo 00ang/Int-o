@@ -34,22 +34,22 @@ export interface Config {
 }
 
 export function loadConfig(overrides: Partial<Config> = {}): Config {
-  const contactEmail = process.env.THROUGHLINE_CONTACT_EMAIL ?? 'throughline@localhost';
+  const contactEmail = process.env.ALLINT_CONTACT_EMAIL ?? 'all-int@localhost';
   return {
-    dbPath: resolve(process.env.THROUGHLINE_DB ?? './data/throughline.db'),
+    dbPath: resolve(process.env.ALLINT_DB ?? './data/allint.db'),
     contactEmail,
     userAgent:
-      process.env.THROUGHLINE_USER_AGENT ??
-      `throughline/0.1 (personal research aggregator; ${contactEmail})`,
+      process.env.ALLINT_USER_AGENT ??
+      `all-int/0.1 (personal research aggregator; ${contactEmail})`,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? null,
     anthropicWorkspaceId: process.env.ANTHROPIC_WORKSPACE_ID ?? null,
-    model: process.env.THROUGHLINE_MODEL ?? 'claude-opus-5',
-    triageModel: process.env.THROUGHLINE_TRIAGE_MODEL ?? 'claude-haiku-4-5-20251001',
-    triageBatchSize: Number(process.env.THROUGHLINE_TRIAGE_BATCH_SIZE ?? 12),
-    triageBatchLimit: Number(process.env.THROUGHLINE_TRIAGE_LIMIT ?? 120),
-    extractBatchLimit: Number(process.env.THROUGHLINE_EXTRACT_LIMIT ?? 40),
-    requestTimeoutMs: Number(process.env.THROUGHLINE_TIMEOUT_MS ?? 30_000),
-    hostDelayMs: Number(process.env.THROUGHLINE_HOST_DELAY_MS ?? 400),
+    model: process.env.ALLINT_MODEL ?? 'claude-opus-5',
+    triageModel: process.env.ALLINT_TRIAGE_MODEL ?? 'claude-haiku-4-5-20251001',
+    triageBatchSize: Number(process.env.ALLINT_TRIAGE_BATCH_SIZE ?? 12),
+    triageBatchLimit: Number(process.env.ALLINT_TRIAGE_LIMIT ?? 120),
+    extractBatchLimit: Number(process.env.ALLINT_EXTRACT_LIMIT ?? 40),
+    requestTimeoutMs: Number(process.env.ALLINT_TIMEOUT_MS ?? 30_000),
+    hostDelayMs: Number(process.env.ALLINT_HOST_DELAY_MS ?? 400),
     congressApiKey: process.env.CONGRESS_GOV_API_KEY ?? null,
     courtListenerToken: process.env.COURTLISTENER_API_TOKEN ?? null,
     ...overrides,

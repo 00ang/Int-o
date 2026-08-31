@@ -23,7 +23,7 @@ import type { Item, Source } from '../core/types.js';
  * The trade-then-award detector therefore runs on `securities-trade` events
  * from whichever source can supply a ticker:
  *   - SEC Form 4, which is structured and complete for corporate insiders; and
- *   - `throughline import:trades <csv>`, for congressional trade data you have
+ *   - `all-int import:trades <csv>`, for congressional trade data you have
  *     parsed or obtained elsewhere.
  *
  * Do not read the absence of congressional trade detail as an absence of

@@ -17,9 +17,11 @@ import { updateThreads } from '../pipeline/threads.js';
 import { seedDemo } from './demo.js';
 import { triage } from '../pipeline/triage.js';
 import { investigate } from '../pipeline/investigate.js';
+import { fetchPtr } from '../sources/ptr-pdf.js';
+import { ptrFilings } from '../core/store.js';
+import type { TradeRecord } from '../pipeline/import-trades.js';
 import {
-  importTradeFile, parseTradeFile, STOCK_ACT_FILING_DEADLINE_DAYS, type Chamber,
-} from '../pipeline/import-trades.js';
+  importTradeFile, parseTradeFile, STOCK_ACT_FILING_DEADLINE_DAYS, type Chamber, importTrades } from '../pipeline/import-trades.js';
 import { readFileSync } from 'node:fs';
 import {
   anchorForecasts, calibrationCurve, generateForecasts, marketComparison,
@@ -30,7 +32,7 @@ const db = () => openDb(cfg.dbPath);
 
 const program = new Command();
 program
-  .name('throughline')
+  .name('all-int')
   .description('Personal intelligence system: ingest, connect, and follow world events.')
   .version('0.1.0');
 
@@ -46,7 +48,7 @@ program
     const n = seedSources(d);
     console.log(`Database ready at ${cfg.dbPath}`);
     console.log(`Loaded ${n} sources.`);
-    console.log('\nNext: throughline sources:check --fix');
+    console.log('\nNext: all-int sources:check --fix');
     console.log('The registry ships unverified - that step confirms which feeds actually answer.');
   });
 
@@ -162,9 +164,9 @@ program
       console.log(`${r.withoutTicker} had no identifiable issuer - recorded, but they cannot join to an award.`);
     }
     if (r.lateFilings > 0) {
-      console.log(`${r.lateFilings} were filed past the ${STOCK_ACT_FILING_DEADLINE_DAYS}-day STOCK Act deadline. See: throughline trades --late`);
+      console.log(`${r.lateFilings} were filed past the ${STOCK_ACT_FILING_DEADLINE_DAYS}-day STOCK Act deadline. See: all-int trades --late`);
     }
-    console.log('\nNext: throughline link   (trade-then-award now has congressional trades to join)');
+    console.log('\nNext: all-int link   (trade-then-award now has congressional trades to join)');
   });
 
 function reportColumns(columns: Record<string, string | undefined>): void {
@@ -201,7 +203,7 @@ program
       limit: o.limit,
     });
     if (rows.length === 0) {
-      console.log('No trades match. Import some: throughline import:trades <file>');
+      console.log('No trades match. Import some: all-int import:trades <file>');
       return;
     }
     for (const ev of rows) {
@@ -241,6 +243,69 @@ program
   });
 
 program
+  .command('ptr:fetch')
+  .description('Read congressional PTR filing PDFs and import the trades in them')
+  .option('-y, --year <year>', 'filing year to read', String)
+  .option('-l, --limit <n>', 'maximum filings to fetch', Number, 25)
+  .option('--dry-run', 'parse and report without writing')
+  .action(async (o) => {
+    const d = db();
+    const filings = ptrFilings(d, { year: o.year, limit: o.limit });
+    if (filings.length === 0) {
+      console.log('No unread PTR filings on file. Run: all-int ingest -s house-disclosures');
+      return;
+    }
+    console.log(`${filings.length} filings to read.\n`);
+
+    const all: TradeRecord[] = [];
+    let unreadable = 0, failed = 0, dropped = 0;
+    for (const f of filings) {
+      const r = await fetchPtr(cfg, {
+        docId: f.docId, year: f.year, filer: f.filer, filingDate: f.filingDate,
+      });
+      dropped += r.dropped.length;
+      if (r.error) { failed++; console.log(`ERROR ${f.docId}: ${r.error}`); continue; }
+      if (r.unreadable) {
+        unreadable++;
+        console.log(`SCAN  ${f.docId}  ${f.filer} - no text layer, cannot read without OCR`);
+        continue;
+      }
+      all.push(...r.trades);
+      console.log(`OK    ${f.docId}  ${f.filer} - ${r.trades.length} transactions`);
+      for (const t of r.trades.slice(0, 4)) {
+        const band = t.amount ? `$${t.amount.min.toLocaleString()}+` : '';
+        const lag = t.disclosureLagDays === null ? '' : `  lag ${t.disclosureLagDays}d`;
+        console.log(`        ${(t.ticker ?? '--').padEnd(6)} ${t.action.padEnd(9)} ${t.transactedAt.slice(0, 10)}  ${band}${lag}`);
+      }
+    }
+
+    console.log(
+      `\n${filings.length} filings: ${filings.length - unreadable - failed} read, ` +
+      `${unreadable} scans, ${failed} failed. ${all.length} transactions, ${dropped} rows dropped.`,
+    );
+    // A scan rate is a coverage figure, not a footnote: it is the share of
+    // congressional trading this path structurally cannot see.
+    if (unreadable > 0) {
+      console.log(`${Math.round((unreadable / filings.length) * 100)}% of filings are images and need OCR or an outside dataset.`);
+    }
+    if (o.dryRun) { console.log('\nDry run - nothing written.'); return; }
+    if (all.length === 0) return;
+
+    const res = importTrades(d, all, {
+      sourceId: 'house-ptr-pdf',
+      sourceName: 'House PTR filings (parsed from the Clerk PDFs)',
+      tier: 'primary',
+      chamber: 'house',
+      origin: 'disclosures-clerk.house.gov',
+    });
+    console.log(
+      `\nImported: ${res.itemsInserted} items, ${res.eventsWritten} events, ` +
+      `${res.lateFilings} filed past the 45-day deadline, ${res.withoutTicker} without a ticker.`,
+    );
+    console.log('Next: all-int link');
+  });
+
+program
   .command('triage')
   .description('Read new items and decide what deserves attention (uses the API, cheaply)')
   .option('-l, --limit <n>', 'maximum items to judge', Number)
@@ -271,7 +336,7 @@ program
     if (run.unjudged > 0) {
       console.log(`${run.unjudged} items returned no judgement and stay queued.`);
     }
-    console.log('\nNext: throughline queue');
+    console.log('\nNext: all-int queue');
   });
 
 program
@@ -287,7 +352,7 @@ program
       withAngle: o.angles,
     });
     if (rows.length === 0) {
-      console.log('Nothing in the queue. Run: throughline triage');
+      console.log('Nothing in the queue. Run: all-int triage');
       return;
     }
     for (const it of rows) {
@@ -298,7 +363,7 @@ program
       console.log(`     ${it.id}`);
       console.log();
     }
-    console.log(`${rows.length} items. Investigate one: throughline investigate <id>`);
+    console.log(`${rows.length} items. Investigate one: all-int investigate <id>`);
   });
 
 program
@@ -585,7 +650,7 @@ program
     // Say what was thrown away and why. A silent drop rate is how a forecasting
     // loop quietly stops forecasting.
     for (const x of r.rejected) console.log(`  rejected: ${x.reason}\n            ${x.question}`);
-    if (r.stored > 0) console.log('\nNext: throughline forecast:anchor   (put a market price beside each one)');
+    if (r.stored > 0) console.log('\nNext: all-int forecast:anchor   (put a market price beside each one)');
   });
 
 program
@@ -620,7 +685,7 @@ program
   .action((o) => {
     const status = o.due ? 'due' : o.resolved ? 'resolved' : o.open ? 'open' : 'all';
     const rows = listForecasts(db(), { status, limit: o.limit });
-    if (rows.length === 0) { console.log('No forecasts. Make some: throughline forecast'); return; }
+    if (rows.length === 0) { console.log('No forecasts. Make some: all-int forecast'); return; }
     for (const f of rows) {
       const mkt = f.marketProbability === null ? '' : `  mkt ${pct(f.marketProbability)}`;
       const outcome = f.outcome ? `  → ${f.outcome}${f.brierScore === null ? '' : ` (brier ${f.brierScore.toFixed(3)})`}` : '';
@@ -629,7 +694,7 @@ program
     }
     const due = listForecasts(db(), { status: 'due', limit: 500 }).length;
     if (due > 0 && status !== 'due') {
-      console.log(`\n${due} past their resolution date and unscored: throughline forecasts --due`);
+      console.log(`\n${due} past their resolution date and unscored: all-int forecasts --due`);
     }
   });
 
@@ -691,7 +756,7 @@ program
     const d = db();
     const { count, meanBrier } = calibration(d);
     if (count === 0) {
-      console.log('Nothing resolved yet. Score some: throughline forecasts --due');
+      console.log('Nothing resolved yet. Score some: all-int forecasts --due');
       return;
     }
     console.log(`${count} resolved, mean Brier ${meanBrier!.toFixed(4)}.`);

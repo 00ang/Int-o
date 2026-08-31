@@ -1,0 +1,73 @@
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'ALL-INT',
+  description: 'Personal intelligence system: primary records, triaged and followed.',
+};
+
+const NAV = [
+  { href: '/', label: 'Queue' },
+  { href: '/entities', label: 'Parties' },
+  { href: '/search', label: 'Search' },
+  { href: '/status', label: 'Status' },
+];
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Special+Elite&display=swap"
+        />
+      </head>
+      <body>
+        {/* Not a real classification. The register is the point; the joke is not. */}
+        <div className="classbar">
+          Unclassified &middot; personal working file &middot; <em>machine judgement, not finding</em>
+        </div>
+
+        <header className="docheader">
+          <div className="wrap">
+            <div className="formline">
+              <span>Doc <b>ALL-INT/{today.replace(/-/g, '')}</b></span>
+              <span>Sheet <b>1</b></span>
+              <span>Origin <b>Open sources</b></span>
+              <span>Handling <b>No restriction</b></span>
+            </div>
+            <div className="masthead">
+              <div>
+                <h1 className="wordmark"><a href="/">All-Int</a></h1>
+                <p className="subtitle">All-source intelligence &mdash; reading queue</p>
+              </div>
+              <span className="stamp stamp-red">Working copy</span>
+            </div>
+            <nav className="docnav">
+              {NAV.map((n) => <a key={n.href} href={n.href}>{n.label}</a>)}
+            </nav>
+          </div>
+        </header>
+
+        <main><div className="wrap">{children}</div></main>
+
+        <footer>
+          <div className="wrap">
+            <p>
+              ALL-INT reads primary records and credible press, judges what deserves a second look,
+              and goes digging only when asked.<br />
+              Verdicts on this page are machine judgements about <b>where to look</b>. They are not
+              findings, and nothing here asserts wrongdoing by any party.
+            </p>
+          </div>
+        </footer>
+        <div className="classbar bottom">
+          Unclassified &middot; end of document
+        </div>
+      </body>
+    </html>
+  );
+}

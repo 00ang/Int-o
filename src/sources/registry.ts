@@ -10,7 +10,7 @@ import type { Source } from '../core/types.js';
  * was built in blocks all outbound HTTP. Feed URLs rot constantly - outlets
  * move to /rss, drop Atom, or put the feed behind Cloudflare.
  *
- * Run `throughline sources:check` on a machine with open network access. It
+ * Run `all-int sources:check` on a machine with open network access. It
  * probes every entry, flips `verified` in the database for the ones that
  * answer, and prints the ones that do not so you can fix or drop them. Until
  * you do that, treat this list as a proposal rather than a working config.

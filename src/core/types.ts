@@ -1,5 +1,5 @@
 /**
- * Domain model for throughline.
+ * Domain model for all-int.
  *
  * The pipeline is a funnel with four narrowing stages:
  *

@@ -526,3 +526,20 @@ describe('the point of all this: trade-then-award now fires on congressional tra
     expect(found).toHaveLength(0);
   });
 });
+
+describe('PTR filing codes', () => {
+  it('reads a partial sale as a sale', () => {
+    expect(normalizeAction('S (partial)')).toBe('sale');
+    expect(normalizeAction('S (PARTIAL)')).toBe('sale');
+  });
+  it('reads the bare Clerk codes', () => {
+    expect(normalizeAction('P')).toBe('purchase');
+    expect(normalizeAction('S')).toBe('sale');
+    expect(normalizeAction('E')).toBe('exchange');
+  });
+  // A code that merely starts with the letter must not be swept in.
+  it('does not read a word beginning with the code letter as that code', () => {
+    expect(normalizeAction('spinoff')).toBe('other');
+    expect(normalizeAction('pending')).toBe('other');
+  });
+});
