@@ -139,3 +139,19 @@ export function search(q: string, limit = 40) {
     topic: string | null; source: string;
   }>;
 }
+
+export function graphStats() {
+  const one = (sql: string) => (db().prepare(sql).get() as { c: number }).c;
+  const edges = one('SELECT COUNT(*) c FROM graph_edges');
+  const nodes = one(
+    `SELECT COUNT(*) c FROM (
+       SELECT a_id AS id FROM graph_edges UNION SELECT b_id FROM graph_edges)`,
+  );
+  return {
+    edges,
+    nodes,
+    domainLinks: one('SELECT COUNT(*) c FROM entity_domains'),
+    // Each edge touches two parties, so the mean degree is twice the ratio.
+    avgDegree: nodes === 0 ? 0 : (edges * 2) / nodes,
+  };
+}

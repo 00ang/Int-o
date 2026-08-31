@@ -79,6 +79,7 @@ loop, all against recorded fixtures.
 | `graph:build` | Wire the association map from the events on file | no |
 | `activate <id> [-H hops]` | Fire the map from one item and see what lights up | no |
 | `synthesize <id>` | Fire the map, then judge the chains that lit | **yes** |
+| `bodies [-l n]` | Fetch full article text for retained items | no |
 | `triage [-l n]` | Judge what deserves attention | **yes**, cheaply |
 | `queue [--notable] [--angles]` | The reading list: what survived triage | no |
 | `investigate <id> [-H]` | Take a second look at one item | only with `-H` |
@@ -102,6 +103,27 @@ loop, all against recorded fixtures.
 | `brief:last`, `stats` | Read cached brief, corpus size | no |
 
 ---
+
+## Article bodies
+
+Feeds ship a headline and a blurb. Before `bodies` the corpus held 2,577 items
+of headline against 534 with real text, which meant triage was guessing what a
+story hid from its headline and extraction was pulling parties and roles out of
+one sentence. Thin events, a sparse map, and angles that read as vague because
+there was nothing underneath them to be specific about - all of it came from
+there.
+
+`bodies` fetches the article behind a retained item's own link, keeps the text
+if it plausibly is one, and gives up quietly otherwise. It is not a general
+scraper and it will not defeat a paywall: roughly a quarter of attempts come
+back blocked, which is reported as a coverage figure rather than retried. The
+guard that matters is not against an empty body but against a plausible one - a
+consent wall is several hundred words of real English, and storing it would be
+worse than storing nothing because everything downstream would treat it as the
+article.
+
+An item whose body arrives after extraction has already run is reopened, since
+the text it was judged on has changed.
 
 ## The association map
 

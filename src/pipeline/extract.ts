@@ -77,12 +77,30 @@ export interface ExtractResult {
   itemId: string;
   eventCount: number;
   error: string | null;
+  /** True when the failure was about the world, not this item. Stays queued. */
+  transient: boolean;
+}
+
+/**
+ * Was this failure about the infrastructure rather than the item?
+ *
+ * The distinction decides whether an item is retired. A schema violation or an
+ * undateable record is a fact about that row and will recur every time, so it
+ * is recorded and the item is done. Exhausted credit, a rate limit, an
+ * overloaded API or a dropped socket says nothing about the item at all, and
+ * writing it to the row throws the item away for a condition that clears on its
+ * own. Thirty-five items were retired by an empty account balance before this
+ * existed.
+ */
+export function isTransient(message: string): boolean {
+  return /credit balance|rate.?limit|429|overloaded|529|5\d\d\s|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|network|timeout|authentication_error|invalid x-api-key|permission_error/i
+    .test(message);
 }
 
 /** Extract one item, resolving its entities and writing its events. */
 export async function extractItem(db: DB, cfg: Config, item: Item): Promise<ExtractResult> {
   const source = getSource(db, item.sourceId);
-  const result: ExtractResult = { itemId: item.id, eventCount: 0, error: null };
+  const result: ExtractResult = { itemId: item.id, eventCount: 0, error: null, transient: false };
 
   try {
     const out = await structured<Extraction>(cfg, {
@@ -133,9 +151,13 @@ export async function extractItem(db: DB, cfg: Config, item: Item): Promise<Extr
     tx();
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);
-    // Recorded on the item so a failing source shows up instead of the item
-    // silently sitting in the queue forever.
-    markItemExtracted(db, item.id, result.error);
+    result.transient = isTransient(result.error);
+    // A failure about THIS ITEM is recorded on it, so a bad row shows up
+    // instead of sitting in the queue forever. A failure about the world -
+    // billing, rate limits, the network - is not the item's fault and must not
+    // be written to it: doing so retires the item permanently for a reason that
+    // will not be true in ten minutes. Those are simply left queued.
+    if (!result.transient) markItemExtracted(db, item.id, result.error);
   }
 
   return result;
@@ -148,10 +170,16 @@ export async function extract(
 ): Promise<ExtractResult[]> {
   const items = itemsAwaitingExtraction(db, opts.limit ?? cfg.extractBatchLimit);
   const results: ExtractResult[] = [];
+  let consecutiveTransient = 0;
   for (const item of items) {
     const r = await extractItem(db, cfg, item);
     results.push(r);
     opts.onProgress?.(r);
+    // Once the API itself is refusing, the rest of the batch will refuse too.
+    // Grinding through it prints the same error hundreds of times and, before
+    // the transient check existed, retired every item it touched.
+    consecutiveTransient = r.transient ? consecutiveTransient + 1 : 0;
+    if (consecutiveTransient >= 3) break;
   }
   return results;
 }

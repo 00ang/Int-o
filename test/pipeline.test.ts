@@ -11,6 +11,7 @@ import { UNTRIAGED } from '../src/core/types.js';
 import { runAllPairRules, runEntityOverlap, scorePair } from '../src/pipeline/detectors/deterministic.js';
 import { PAIR_RULES } from '../src/pipeline/detectors/rules.js';
 import { attribute } from '../src/pipeline/triage.js';
+import { isTransient } from '../src/pipeline/extract.js';
 
 let db: DB;
 beforeEach(() => { db = openDb(':memory:'); });
@@ -411,5 +412,25 @@ describe('triage batch attribution', () => {
   // An item left unattributed stays untriaged, so it comes back next run.
   it('returns nothing when the response is empty', () => {
     expect(attribute([item('a')], [])).toEqual([]);
+  });
+});
+
+describe('retiring an item, or not', () => {
+  // The distinction decides whether an item is thrown away. An empty account
+  // balance silently retired 35 items before this existed.
+  it('treats an infrastructure failure as transient', () => {
+    expect(isTransient('400 {"message":"Your credit balance is too low to access the Anthropic API."}')).toBe(true);
+    expect(isTransient('429 rate_limit_error')).toBe(true);
+    expect(isTransient('529 overloaded_error')).toBe(true);
+    expect(isTransient('ECONNRESET')).toBe(true);
+    expect(isTransient('socket hang up')).toBe(true);
+    expect(isTransient('authentication_error: invalid x-api-key')).toBe(true);
+  });
+
+  // A fact about the row. It will recur every time, so record it and move on.
+  it('treats a fault in the item itself as permanent', () => {
+    expect(isTransient('Failed to parse structured output: invalid_value at events.0.domains.1')).toBe(false);
+    expect(isTransient('Model returned no parseable structured output.')).toBe(false);
+    expect(isTransient('Model declined the request (unspecified).')).toBe(false);
   });
 });

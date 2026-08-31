@@ -21,6 +21,7 @@ import { fetchPtr } from '../sources/ptr-pdf.js';
 import { buildGraph, graphStats } from '../core/graph.js';
 import { activateFromItem } from '../pipeline/activate.js';
 import { synthesize } from '../pipeline/synthesize.js';
+import { fetchBodies } from '../pipeline/bodies.js';
 import { ptrFilings } from '../core/store.js';
 import type { TradeRecord } from '../pipeline/import-trades.js';
 import {
@@ -372,6 +373,30 @@ program
       console.log(`  falsified:  ${l.falsifier}\n`);
     }
     if (r.dismissed) console.log(`Dismissed: ${r.dismissed}`);
+  });
+
+program
+  .command('bodies')
+  .description('Fetch full article text for retained items that only have a blurb')
+  .option('-l, --limit <n>', 'maximum articles to fetch', Number, 40)
+  .action(async (o) => {
+    const d = db();
+    const r = await fetchBodies(d, cfg, {
+      limit: o.limit,
+      onProgress: (res, item) => {
+        if (res.reason) console.log(`  --    ${res.reason.padEnd(18)} ${item.title.slice(0, 56)}`);
+        else console.log(`  ${String(res.chars).padStart(5)}c  ${' '.repeat(18)} ${item.title.slice(0, 56)}`);
+      },
+    });
+    console.log(`\n${r.attempted} attempted, ${r.fetched} bodies stored.`);
+    const skips = Object.entries(r.skipped).sort((a, b) => b[1] - a[1]);
+    if (skips.length > 0) {
+      console.log('Not stored: ' + skips.map(([k, n]) => `${n} ${k}`).join(', '));
+    }
+    if (r.fetched > 0) {
+      console.log('\nThose items were reopened for extraction, since the text is new.');
+      console.log('Next: all-int extract');
+    }
   });
 
 program

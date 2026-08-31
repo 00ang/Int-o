@@ -65,7 +65,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         </div>
       </section>
 
-      <section className="sheet">
+      <section className="sheet" id="map">
         <div className="sheet-head">
           <span className="num">B.</span>
           <h2>Association map</h2>

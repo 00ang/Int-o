@@ -268,3 +268,14 @@ footer p{font-size:var(--s--1);color:var(--toner-3);margin:0;line-height:1.65}
 .blots i:nth-child(3){width:15px;height:7px;border-radius:55% 45% 60% 40%/65% 50% 50% 35%}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* The way into the map from the queue. This is the one control on a record row
+   that leads somewhere the reader has not already been, so it is the only one
+   set in the stamp ink. */
+.digdeeper{
+  font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  border:1.5px solid var(--stamp);color:var(--stamp);padding:3px 9px;
+  text-decoration:none;line-height:1.3;
+}
+.digdeeper:hover{background:var(--stamp);color:var(--stock-lit)}
+.digdeeper:focus-visible{outline:2px solid var(--toner);outline-offset:2px}

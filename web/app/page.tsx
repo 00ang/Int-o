@@ -88,7 +88,8 @@ export default async function Page({
                 ) : null}
                 <p className="assess"><b>Assessment</b>{r.reason}</p>
                 <div className="rec-foot">
-                  <span className={`tier tier-${r.tier}`}>{r.tier}</span>
+                  <a className="digdeeper" href={`/item/${r.id}#map`}>Dig deeper &rarr;</a>
+                  <span className="tier">{r.tier}</span>
                   <span>{r.source}</span>
                   <a href={r.url} target="_blank" rel="noopener noreferrer">Original record</a>
                 </div>
