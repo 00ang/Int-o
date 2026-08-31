@@ -37,11 +37,15 @@ const SHAPE: Record<string, 'dot' | 'square' | 'ring'> = {
   location: 'ring',
 };
 
-export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
+export default function Chart(
+  { nodes, edges, onPick }:
+  { nodes: GraphNode[]; edges: GraphEdge[]; onPick?: (n: GraphNode | null) => void },
+) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [w, setW] = useState(900);
   const [hover, setHover] = useState<Placed | null>(null);
+  const [picked, setPicked] = useState<Placed | null>(null);
   const placedRef = useRef<Placed[]>([]);
 
   useEffect(() => {
@@ -126,15 +130,18 @@ export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: Gra
     ctx.clearRect(0, 0, w, h);
 
     const byId = new Map(placed.map((p) => [p.id, p]));
-    const near = hover
-      ? new Set(edges.filter((e) => e.a === hover.id || e.b === hover.id)
+    // A picked party stays lit after the pointer leaves, so its relations can
+    // be read without holding the mouse still.
+    const focus = hover ?? picked;
+    const near = focus
+      ? new Set(edges.filter((e) => e.a === focus.id || e.b === focus.id)
           .flatMap((e) => [e.a, e.b]))
       : null;
 
     for (const e of edges) {
       const s = byId.get(e.a), t = byId.get(e.b);
       if (!s || !t) continue;
-      const lit = hover && (e.a === hover.id || e.b === hover.id);
+      const lit = focus && (e.a === focus.id || e.b === focus.id);
       ctx.strokeStyle = lit ? STAMP : INK;
       ctx.globalAlpha = lit ? 0.95 : 0.13;
       ctx.lineWidth = lit ? 1.4 : 0.5;
@@ -143,7 +150,7 @@ export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: Gra
     ctx.globalAlpha = 1;
 
     for (const n of placed) {
-      const isHover = hover?.id === n.id;
+      const isHover = focus?.id === n.id;
       const isNear = near?.has(n.id) ?? false;
       if (isHover) {
         ctx.fillStyle = HI;
@@ -173,9 +180,9 @@ export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: Gra
         ctx.fillText(label, n.x, n.y - n.r - 4);
       }
     }
-  }, [placed, edges, hover, w, h]);
+  }, [placed, edges, hover, picked, w, h]);
 
-  function pick(ev: React.MouseEvent<HTMLCanvasElement>) {
+  function nodeAt(ev: React.MouseEvent<HTMLCanvasElement>): Placed | null {
     const rect = ev.currentTarget.getBoundingClientRect();
     const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
     let best: Placed | null = null, bestD = 18;
@@ -183,7 +190,11 @@ export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: Gra
       const d = Math.hypot(n.x - x, n.y - y);
       if (d < bestD) { bestD = d; best = n; }
     }
-    setHover(best);
+    return best;
+  }
+
+  function pick(ev: React.MouseEvent<HTMLCanvasElement>) {
+    setHover(nodeAt(ev));
   }
 
   return (
@@ -193,6 +204,11 @@ export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: Gra
         style={{ width: '100%', height: h, display: 'block', cursor: 'crosshair' }}
         onMouseMove={pick}
         onMouseLeave={() => setHover(null)}
+        onClick={(ev) => {
+          const n = nodeAt(ev);
+          setPicked(n && picked?.id === n.id ? null : n);
+          onPick?.(n && picked?.id === n.id ? null : n);
+        }}
         aria-label={`Association map: ${nodes.length} parties, ${edges.length} links`}
       />
       <div
@@ -201,18 +217,27 @@ export default function Chart({ nodes, edges }: { nodes: GraphNode[]; edges: Gra
           fontSize: '0.76rem', lineHeight: 1.5, minHeight: '3.2em',
         }}
       >
-        {hover ? (
+        {(hover ?? picked) ? (
           <>
-            <b style={{ textTransform: 'uppercase', letterSpacing: '.08em' }}>{hover.name}</b>{' '}
-            <span style={{ color: '#5E5E57' }}>[{hover.kind}, {hover.degree} links]</span>
+            <b style={{ textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              {(hover ?? picked)!.name}
+            </b>{' '}
+            <span style={{ color: '#5E5E57' }}>
+              [{(hover ?? picked)!.kind}, {(hover ?? picked)!.degree} links]
+            </span>
             <br />
-            <a href={`/entity/${encodeURIComponent(hover.slug)}`}>Open this party&rsquo;s record &rarr;</a>
+            <span style={{ color: '#5E5E57' }}>
+              {picked?.id === (hover ?? picked)!.id
+                ? 'Relations listed below. Click again to clear.'
+                : 'Click to read what connects it to each neighbour.'}
+            </span>
           </>
         ) : (
           <span style={{ color: '#5E5E57' }}>
             Every party the corpus has wired to another. Dot = person, square = company or
             organisation, ring = government body or place. Size is how many links a party
-            carries. Point at one to light its associations.
+            carries. Point at one to light its associations, and click to read the records
+            behind them.
           </span>
         )}
       </div>

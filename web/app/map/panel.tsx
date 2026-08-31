@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Chart, { type GraphEdge, type GraphNode } from './chart';
+import Relations from './relations';
 
 /**
  * Loads the map, and offers a rebuild.
@@ -13,6 +14,7 @@ import Chart, { type GraphEdge, type GraphNode } from './chart';
 export default function MapPanel() {
   const [data, setData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'rebuilding' | 'error'>('loading');
+  const [picked, setPicked] = useState<GraphNode | null>(null);
   const [msg, setMsg] = useState('');
 
   async function load(rebuild: boolean) {
@@ -46,7 +48,12 @@ export default function MapPanel() {
       {data && data.nodes.length === 0 && (
         <p className="empty">No links yet. Extract some items, then rebuild.</p>
       )}
-      {data && data.nodes.length > 0 && <Chart nodes={data.nodes} edges={data.edges} />}
+      {data && data.nodes.length > 0 && (
+        <>
+          <Chart nodes={data.nodes} edges={data.edges} onPick={setPicked} />
+          <Relations party={picked} />
+        </>
+      )}
     </div>
   );
 }
