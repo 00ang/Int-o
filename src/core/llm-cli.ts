@@ -96,10 +96,32 @@ export function extractJson(text: string): string {
   throw new Error('Unbalanced JSON object in the response.');
 }
 
+/**
+ * The environment the CLI must run in.
+ *
+ * `ANTHROPIC_API_KEY` takes precedence over a claude.ai login, so a key left in
+ * the environment makes the CLI refuse outright - which is the exact situation
+ * this backend exists to escape, since the whole point is to stop spending
+ * against that key. Anything that authenticates the API is stripped from the
+ * child so the subscription is what gets used.
+ */
+const API_AUTH_VARS = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_WORKSPACE_ID',
+  'ANTHROPIC_BASE_URL',
+];
+
+export function cliEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const k of API_AUTH_VARS) delete env[k];
+  return env;
+}
+
 /** Everything the CLI wrote, or a rejection describing why it did not run. */
 function runCli(bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: cliEnv() });
     let out = '';
     let err = '';
     const timer = setTimeout(() => {

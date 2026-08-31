@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { extractJson } from '../src/core/llm-cli.js';
+import { cliEnv, extractJson } from '../src/core/llm-cli.js';
 import { isTransient } from '../src/pipeline/extract.js';
 
 describe('recovering JSON from CLI output', () => {
@@ -75,5 +75,38 @@ describe('CLI failures are transient, not item faults', () => {
   // A schema violation from the CLI IS about the item, and recurs.
   it('treats a schema violation as permanent', () => {
     expect(isTransient('claude CLI output failed the schema: events.0.domains.1: invalid')).toBe(false);
+  });
+});
+
+describe('the environment the CLI runs in', () => {
+  // A key left in the environment overrides the claude.ai login and the CLI
+  // refuses - which defeats the entire purpose of this backend, since the point
+  // is to stop spending against that key.
+  it('strips every API auth variable from the child environment', () => {
+    const env = cliEnv({
+      ANTHROPIC_API_KEY: 'sk-ant-something',
+      ANTHROPIC_AUTH_TOKEN: 'tok',
+      ANTHROPIC_WORKSPACE_ID: 'ws',
+      ANTHROPIC_BASE_URL: 'https://example.com',
+      PATH: '/usr/bin',
+      ALLINT_DB: './data/allint.db',
+    });
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_WORKSPACE_ID).toBeUndefined();
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
+  });
+
+  it('leaves everything else alone, including the database path', () => {
+    const env = cliEnv({ PATH: '/usr/bin', ALLINT_DB: './data/allint.db', HOME: '/Users/x' });
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.ALLINT_DB).toBe('./data/allint.db');
+    expect(env.HOME).toBe('/Users/x');
+  });
+
+  it('does not mutate the environment it was given', () => {
+    const base = { ANTHROPIC_API_KEY: 'sk-ant-x', PATH: '/usr/bin' };
+    cliEnv(base);
+    expect(base.ANTHROPIC_API_KEY).toBe('sk-ant-x');
   });
 });
