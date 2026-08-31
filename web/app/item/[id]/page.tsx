@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { item, eventsForItem, connectionsForItem } from '../../../lib/queries';
 import InvestigateButton from './investigate';
 import Circled from '../../circled';
+import Network from './network';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +68,21 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
       <section className="sheet">
         <div className="sheet-head">
           <span className="num">B.</span>
+          <h2>Association map</h2>
+        </div>
+        <p className="instruction">
+          Fires the network from this story&rsquo;s parties and lets energy travel. The centre is
+          this item; each ring outward is one degree of separation. What matters is the outer
+          rings &mdash; parties this story never names, reached only through intermediaries, which
+          no query over events can return. A path is structural proximity, not evidence: every
+          chain is kept so it can be walked and thrown out.
+        </p>
+        <Network id={it.id} />
+      </section>
+
+      <section className="sheet">
+        <div className="sheet-head">
+          <span className="num">C.</span>
           <h2>Investigation</h2>
         </div>
         <p className="instruction">
@@ -79,7 +95,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
       {events.length > 0 ? (
         <section className="sheet">
-          <div className="sheet-head"><span className="num">C.</span><h2>Events extracted</h2></div>
+          <div className="sheet-head"><span className="num">D.</span><h2>Events extracted</h2></div>
           <div className="tscroll">
             <table>
               <thead><tr><th>Occurred</th><th>Type</th><th>Assertion</th><th>Summary</th><th>Parties</th></tr></thead>
@@ -101,7 +117,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
       {connections.length > 0 ? (
         <section className="sheet">
-          <div className="sheet-head"><span className="num">D.</span><h2>Connections</h2></div>
+          <div className="sheet-head"><span className="num">E.</span><h2>Connections</h2></div>
           {connections.map((c) => (
             <article className="record" key={c.id}>
               <div className="rec-top">

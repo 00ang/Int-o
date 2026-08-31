@@ -18,6 +18,9 @@ import { seedDemo } from './demo.js';
 import { triage } from '../pipeline/triage.js';
 import { investigate } from '../pipeline/investigate.js';
 import { fetchPtr } from '../sources/ptr-pdf.js';
+import { buildGraph, graphStats } from '../core/graph.js';
+import { activateFromItem } from '../pipeline/activate.js';
+import { synthesize } from '../pipeline/synthesize.js';
 import { ptrFilings } from '../core/store.js';
 import type { TradeRecord } from '../pipeline/import-trades.js';
 import {
@@ -303,6 +306,72 @@ program
       `${res.lateFilings} filed past the 45-day deadline, ${res.withoutTicker} without a ticker.`,
     );
     console.log('Next: all-int link');
+  });
+
+program
+  .command('graph:build')
+  .description('Rebuild the association graph from the events on file')
+  .action(() => {
+    const d = db();
+    const r = buildGraph(d);
+    const g = graphStats(d);
+    console.log(`${r.eventsRead} events read.`);
+    console.log(`${r.edges} edges over ${g.nodes} parties, ${r.entityDomains} party-topic links.`);
+    console.log(`  ${r.eventPairs} from a shared event, ${r.itemPairs} more from a shared document, ${r.threadPairs} more from a shared storyline.`);
+    console.log('\nNext: all-int activate <item-id>');
+  });
+
+program
+  .command('activate <id>')
+  .description('Fire the network from one item and see what else lights up')
+  .option('-H, --hops <n>', 'how far energy travels', Number, 3)
+  .option('-d, --decay <n>', 'energy kept per hop', Number, 0.5)
+  .action((id, o) => {
+    const d = db();
+    const r = activateFromItem(d, id, { hops: o.hops, decay: o.decay });
+    if (r.seeds.length === 0) {
+      console.log('Nothing to fire from: this item has no extracted parties yet.');
+      return;
+    }
+    console.log(`Seeded from ${r.seeds.length} parties: ${r.seedNames.slice(0, 6).join(', ')}`);
+    console.log(`${r.edgesWalked} edges walked, ${r.nodes.length} nodes lit.\n`);
+
+    if (r.distant.length === 0) {
+      console.log('Nothing lit beyond direct co-occurrence. The map has no route');
+      console.log('from this item to anything it does not already name.');
+      return;
+    }
+
+    console.log('LIT THROUGH AN INTERMEDIARY (the part a join cannot find)');
+    for (const n of r.distant.slice(0, 12)) {
+      console.log(`\n  ${n.energy.toFixed(3)}  ${n.name}  [${n.kind}, ${n.hops} hops]`);
+      console.log(`     via ${n.pathNames.join(' -> ')}`);
+    }
+    if (r.hubsHeld.length > 0) {
+      console.log(`\nHeld at hubs (received but did not relay): ${r.hubsHeld.slice(0, 5).join(', ')}`);
+    }
+  });
+
+program
+  .command('synthesize <id>')
+  .description('Fire the map from an item, then have the model judge what lit up (uses the API)')
+  .option('-H, --hops <n>', 'how far energy travels', Number, 3)
+  .option('-c, --candidates <n>', 'how many lit parties to review', Number, 12)
+  .action(async (id, o) => {
+    const r = await synthesize(db(), cfg, id, { hops: o.hops, maxCandidates: o.candidates });
+    console.log(`Seeded from ${r.activation.seeds.length} parties, ${r.activation.nodes.length} nodes lit, ${r.candidates} reviewed.\n`);
+    if (r.skipped) { console.log(r.skipped); return; }
+
+    if (r.leads.length === 0) {
+      console.log('NO LEADS. Every path reviewed was coincidence.');
+    }
+    for (const l of r.leads) {
+      console.log(`[${l.confidence.toFixed(2)}] ${l.party}`);
+      console.log(`  mechanism:  ${l.mechanism}`);
+      console.log(`  confirm by: ${l.whatWouldConfirm}`);
+      console.log(`  falsified:  ${l.falsifier}\n`);
+    }
+    if (r.dismissed) console.log(`Dismissed: ${r.dismissed}`);
   });
 
 program

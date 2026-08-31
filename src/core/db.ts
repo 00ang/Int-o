@@ -133,6 +133,26 @@ CREATE INDEX IF NOT EXISTS connections_from ON connections(from_event_id);
 CREATE INDEX IF NOT EXISTS connections_to ON connections(to_event_id);
 CREATE INDEX IF NOT EXISTS connections_rank ON connections(basis, confidence DESC);
 
+CREATE TABLE IF NOT EXISTS graph_edges (
+  a_id        TEXT NOT NULL REFERENCES entities(id),
+  b_id        TEXT NOT NULL REFERENCES entities(id),
+  weight      REAL NOT NULL,
+  event_count INTEGER NOT NULL DEFAULT 0,
+  first_seen  TEXT,
+  last_seen   TEXT,
+  PRIMARY KEY (a_id, b_id)
+);
+CREATE INDEX IF NOT EXISTS graph_edges_a ON graph_edges(a_id, weight DESC);
+CREATE INDEX IF NOT EXISTS graph_edges_b ON graph_edges(b_id, weight DESC);
+
+CREATE TABLE IF NOT EXISTS entity_domains (
+  entity_id   TEXT NOT NULL REFERENCES entities(id),
+  domain      TEXT NOT NULL,
+  weight      REAL NOT NULL,
+  PRIMARY KEY (entity_id, domain)
+);
+CREATE INDEX IF NOT EXISTS entity_domains_d ON entity_domains(domain, weight DESC);
+
 CREATE TABLE IF NOT EXISTS threads (
   id              TEXT PRIMARY KEY,
   title           TEXT NOT NULL,

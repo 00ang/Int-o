@@ -76,6 +76,9 @@ loop, all against recorded fixtures.
 | `ingest [--all] [-s id...]` | Fetch new items from due sources | no |
 | `import:trades <file> [-n]` | Import disclosed trades from CSV/JSON | no |
 | `ptr:fetch [-y year] [-l n]` | Read congressional PTR filing PDFs and import the trades | no |
+| `graph:build` | Wire the association map from the events on file | no |
+| `activate <id> [-H hops]` | Fire the map from one item and see what lights up | no |
+| `synthesize <id>` | Fire the map, then judge the chains that lit | **yes** |
 | `triage [-l n]` | Judge what deserves attention | **yes**, cheaply |
 | `queue [--notable] [--angles]` | The reading list: what survived triage | no |
 | `investigate <id> [-H]` | Take a second look at one item | only with `-H` |
@@ -99,6 +102,56 @@ loop, all against recorded fixtures.
 | `brief:last`, `stats` | Read cached brief, corpus size | no |
 
 ---
+
+## The association map
+
+The detectors ask whether two records join on a shared party inside a date
+window. That finds the checkable cases and misses everything else, because a
+join can only see what already sits in one row.
+
+The map sees further. Parties become nodes; the events they share become
+weighted edges; and a question can then travel. `graph:build` wires it from
+three kinds of shared context, in descending strength: two parties named in one
+event, two parties in different events of one document, two parties in one
+storyline. The last is what gives the map any reach - without it the graph is a
+pile of two-party cliques with no bridges.
+
+`activate <item>` fires it. The story's own parties are seeded with energy,
+which travels along edges, attenuating at each hop, until it falls below a
+threshold. What is still lit at the end is what the corpus associates with the
+story.
+
+**The far half is the point.** A party one hop out was named alongside the seed,
+which a join already finds. A party lit at two or three hops never appeared
+beside it anywhere, and that is the shape no query over events can return.
+
+Three things stop the map lighting up uniformly, which is the failure mode that
+makes a graph like this useless:
+
+- **Containers do not relay.** A country or a place sits between any two parties
+  in a corpus of national records. They light up and are reported; they cannot
+  be the reason something else lit.
+- **Specificity attenuates.** Energy through a node is scaled by how connected
+  it is. A path through a party with three associates is informative; the same
+  path through one with forty is a fact about the corpus, not about the story.
+- **Unnamed parties do not relay.** "An unnamed private company" is a real thing
+  to have captured - it is the shape of the gap - but wiring energy through it
+  would join every story that withheld a name to every other one.
+
+`synthesize <item>` fires the map and then reads the actual events along each
+chain, asking whether any amounts to a mechanism. The model never sees the
+energy scores - a number it did not compute is a number it will rationalise -
+only the story, the party that lit up, and the chain of records between them.
+Every lead it returns must name a mechanism, state what would confirm it, and
+carry a falsifier; confidence is capped at 0.7 so a proposal from a statistical
+procedure can never outrank a deterministic finding. Returning nothing is the
+expected answer and usually the right one.
+
+**Activation is not evidence.** It says the map has a weighted path, and a
+weighted path through a co-occurrence graph is exactly as innocent as
+co-occurrence. Two parties can light each other up through a shared regulator
+and a busy week. That is why every activated party carries the chain that
+reached it: so the reason is inspectable, and so it can be dismissed.
 
 ## Honest by construction
 
