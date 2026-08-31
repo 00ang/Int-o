@@ -22,7 +22,14 @@ export function getClient(cfg: Config): Anthropic {
         'ingestion and search do not.',
       );
     }
-    client = new Anthropic({ apiKey: cfg.anthropicApiKey });
+    client = new Anthropic({
+      apiKey: cfg.anthropicApiKey,
+      // An identity-linked key is scoped to a workspace and the API rejects it
+      // with a 400 until told which one the call acts in.
+      ...(cfg.anthropicWorkspaceId
+        ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } }
+        : {}),
+    });
   }
   return client;
 }
@@ -38,19 +45,29 @@ export interface StructuredOptions {
   user: string;
   schema: ZodType;
   maxTokens?: number;
-  /** Lower effort for mechanical work, higher for synthesis. */
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /**
+   * Lower effort for mechanical work, higher for synthesis. `null` omits the
+   * parameter entirely, which the small models require.
+   */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  /** Overrides the configured model. Triage runs on a cheaper one than analysis. */
+  model?: string;
+  /**
+   * Adaptive thinking, on by default. Turn it off for mechanical classification
+   * and for the small models, which do not support it.
+   */
+  thinking?: boolean;
 }
 
 export async function structured<T>(cfg: Config, opts: StructuredOptions): Promise<T> {
   const anthropic = getClient(cfg);
 
   const message = await anthropic.messages.parse({
-    model: cfg.model,
+    model: opts.model ?? cfg.model,
     max_tokens: opts.maxTokens ?? 16_000,
-    thinking: { type: 'adaptive' },
+    ...(opts.thinking === false ? {} : { thinking: { type: 'adaptive' as const } }),
     output_config: {
-      effort: opts.effort ?? 'medium',
+      ...(opts.effort === null ? {} : { effort: opts.effort ?? 'medium' }),
       format: zodOutputFormat(opts.schema),
     },
     // The instructions are identical on every call in a run, so caching them

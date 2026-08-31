@@ -43,7 +43,7 @@ export ANTHROPIC_API_KEY=sk-ant-...                # extraction, threads, brief
 npx tsx src/cli/index.ts demo      # see it work: no key, no network
 npx tsx src/cli/index.ts init      # create the DB, load 79 sources
 npx tsx src/cli/index.ts sources:check --fix   # ← do this first, see below
-npx tsx src/cli/index.ts run       # ingest → extract → link → thread → brief
+npx tsx src/cli/index.ts run       # ingest → triage → extract → link → thread → brief
 ```
 
 `demo` seeds a synthetic corpus and runs the detectors. It needs nothing and
@@ -75,7 +75,10 @@ loop, all against recorded fixtures.
 | `sources` / `sources:check [--fix]` | List / probe sources | no |
 | `ingest [--all] [-s id...]` | Fetch new items from due sources | no |
 | `import:trades <file> [-n]` | Import disclosed trades from CSV/JSON | no |
-| `extract [-l n]` | Items → structured events | **yes** |
+| `triage [-l n]` | Judge what deserves attention | **yes**, cheaply |
+| `queue [--notable] [--angles]` | The reading list: what survived triage | no |
+| `investigate <id> [-H]` | Take a second look at one item | only with `-H` |
+| `extract [-l n]` | Triaged items → structured events | **yes** |
 | `link [-H] [-d days]` | Find connections (`-H` adds hypotheses) | only with `-H` |
 | `threads:update` | Assign events to storylines, resynthesize | **yes** |
 | `brief [-w hours]` | Write the brief | **yes** |
@@ -131,6 +134,20 @@ unrelated, that an empty list is the correct answer more often than not, and
 that it may note a pattern is consistent with coordination but may not assert
 coordination happened.
 
+**Triage filters, it does not accuse.** Every item is judged before anything
+else is spent on it, and the ceiling of that judgement is "worth a look" - a
+named thing to check, never a conclusion. Nothing downstream runs on its own
+initiative: `investigate` exists because a person pressed it. The system
+surfaces, you choose, and only then does it go digging. That ordering is what
+keeps a tool that looks for hidden connections from being a machine that
+manufactures them.
+
+**Scale is not evidence.** Triage is explicitly told that a disaster with a
+thousand dead is mundane for these purposes, because it is exactly what it
+appears to be, and that a famous name or a contentious topic is not a reason to
+look twice. The axis is whether money or power did something the piece does not
+fully explain - not whether the story is big.
+
 **You grade it.** `verdict` records whether a link was sound, coincidence or
 wrong. That is the ground truth for tuning the detectors, and the honest answer
 to "how well does this work" once you have run it for a while.
@@ -141,7 +158,8 @@ to "how well does this work" once you have run it for a while.
 
 ```
 sources/     fetch + parse            → Item     raw material, as published
-pipeline/    extract (LLM, schema'd)  → Event    dated assertion, typed parties
+pipeline/    triage (LLM, cheap)      → verdict  is this worth attention at all
+             extract (LLM, schema'd)  → Event    dated assertion, typed parties
              detectors/ (pure SQL)    → Connection  the checkable half
              link (LLM, capped)       → Connection  the speculative half
              threads (LLM)            → Thread   persistent storyline
@@ -311,6 +329,10 @@ actually shows.
 | `THROUGHLINE_DB` | Database path | `./data/throughline.db` |
 | `THROUGHLINE_CONTACT_EMAIL` | Identifies you in the User-Agent | none |
 | `ANTHROPIC_API_KEY` | Extraction, threads, brief | none |
+| `ANTHROPIC_WORKSPACE_ID` | Only for an identity-linked key, which the API rejects without it | none |
+| `THROUGHLINE_TRIAGE_MODEL` | Model for triage, which reads everything | `claude-haiku-4-5-20251001` |
+| `THROUGHLINE_TRIAGE_BATCH_SIZE` | Items judged per call | 12 |
+| `THROUGHLINE_TRIAGE_LIMIT` | Items per triage run | 120 |
 | `THROUGHLINE_MODEL` | Model id | `claude-opus-5` |
 | `THROUGHLINE_EXTRACT_LIMIT` | Items per extraction run | 40 |
 | `THROUGHLINE_HOST_DELAY_MS` | Politeness delay per host | 400 |

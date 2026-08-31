@@ -1,6 +1,7 @@
 import type { Config } from '../core/config.js';
 import { fetchJson } from '../core/http.js';
 import { stableId } from '../core/ids.js';
+import { structuredRecordTriage } from '../core/types.js';
 import type { Item, Source } from '../core/types.js';
 
 /**
@@ -106,6 +107,7 @@ export function snapshotsToItems(
     // Markets are reference data, not assertions about the world, so they are
     // never sent to the extractor.
     extractedAt: fetchedAt,
+    ...structuredRecordTriage(fetchedAt),
     extractionError: null,
   }));
 }

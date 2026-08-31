@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import type { Config } from '../core/config.js';
 import { fetchText } from '../core/http.js';
 import { stableId } from '../core/ids.js';
+import { UNTRIAGED } from '../core/types.js';
 import type { Item, Source } from '../core/types.js';
 
 const parser = new XMLParser({
@@ -125,6 +126,7 @@ export function parseFeed(xml: string, source: Source, fetchedAt = new Date().to
       fetchedAt,
       raw: null,
       extractedAt: null,
+      ...UNTRIAGED,
       extractionError: null,
     });
   }

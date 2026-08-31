@@ -6,7 +6,7 @@ import {
   connectionsSince, counts, eventsForEntity, findEntityByName, getEvent, getItem, insertConnection,
   getSource, listSources, listThreads, searchItems, setConnectionVerdict, threadEvents,
   topEntities, latestBrief, getThread, tradeEvents, listForecasts, getForecast,
-  resolveForecast, calibration,
+  resolveForecast, calibration, triagedQueue, getEntity,
 } from '../core/store.js';
 import { buildBrief } from '../pipeline/brief.js';
 import { extract } from '../pipeline/extract.js';
@@ -15,6 +15,8 @@ import { link } from '../pipeline/link.js';
 import { runAllPairRules } from '../pipeline/detectors/deterministic.js';
 import { updateThreads } from '../pipeline/threads.js';
 import { seedDemo } from './demo.js';
+import { triage } from '../pipeline/triage.js';
+import { investigate } from '../pipeline/investigate.js';
 import {
   importTradeFile, parseTradeFile, STOCK_ACT_FILING_DEADLINE_DAYS, type Chamber,
 } from '../pipeline/import-trades.js';
@@ -239,8 +241,127 @@ program
   });
 
 program
+  .command('triage')
+  .description('Read new items and decide what deserves attention (uses the API, cheaply)')
+  .option('-l, --limit <n>', 'maximum items to judge', Number)
+  .action(async (o) => {
+    const d = db();
+    const counts = { notable: 0, 'worth-a-look': 0, mundane: 0 };
+    const run = await triage(d, cfg, {
+      limit: o.limit,
+      onBatch: (rs) => {
+        for (const r of rs) {
+          counts[r.verdict] += 1;
+          if (r.verdict === 'mundane') continue;
+          console.log(`${r.verdict === 'notable' ? '**' : ' *'} ${r.topic}`);
+          if (r.angle) console.log(`     ${r.angle}`);
+        }
+      },
+    });
+    const judged = run.results.length;
+    console.log(
+      `\n${judged} items judged in ${run.batches} calls: ` +
+      `${counts.notable} notable, ${counts['worth-a-look']} worth a look, ${counts.mundane} mundane.`,
+    );
+    // A run where most things are interesting means the filter is not filtering.
+    if (judged > 0) {
+      const kept = judged - counts.mundane;
+      console.log(`${Math.round((kept / judged) * 100)}% kept.`);
+    }
+    if (run.unjudged > 0) {
+      console.log(`${run.unjudged} items returned no judgement and stay queued.`);
+    }
+    console.log('\nNext: throughline queue');
+  });
+
+program
+  .command('queue')
+  .description('What survived triage - the reading list')
+  .option('-n, --limit <n>', 'how many to show', Number, 30)
+  .option('--notable', 'only the notable ones')
+  .option('--angles', 'only items with something to pull on')
+  .action((o) => {
+    const rows = triagedQueue(db(), {
+      limit: o.limit,
+      verdict: o.notable ? 'notable' : undefined,
+      withAngle: o.angles,
+    });
+    if (rows.length === 0) {
+      console.log('Nothing in the queue. Run: throughline triage');
+      return;
+    }
+    for (const it of rows) {
+      const mark = it.triageVerdict === 'notable' ? '**' : ' *';
+      console.log(`${mark} ${it.publishedAt.slice(0, 10)}  ${it.triageTopic}`);
+      console.log(`     ${it.title}`);
+      if (it.triageAngle) console.log(`     angle: ${it.triageAngle}`);
+      console.log(`     ${it.id}`);
+      console.log();
+    }
+    console.log(`${rows.length} items. Investigate one: throughline investigate <id>`);
+  });
+
+program
+  .command('investigate <id>')
+  .description('Take a second look at one item: its parties, what else touches them, what joins')
+  .option('-d, --window-days <n>', 'how far either side to look', Number, 180)
+  .option('-H, --hypotheses', 'also ask the model to propose links (uses the API)')
+  .action(async (id, o) => {
+    const d = db();
+    const inv = await investigate(d, cfg, id, {
+      windowDays: o.windowDays,
+      hypotheses: o.hypotheses,
+    });
+
+    console.log(inv.item.title);
+    console.log(inv.item.url);
+    if (inv.item.triageAngle) console.log(`\nangle: ${inv.item.triageAngle}`);
+    if (inv.extractedNow) console.log('(extracted for this investigation)');
+
+    console.log(`\nEVENTS IN THIS ITEM (${inv.events.length})`);
+    for (const e of inv.events) {
+      console.log(`  ${e.occurredAt.slice(0, 10)} [${e.type}] ${e.summary}`);
+      const parties = e.entities
+        .filter((en) => en.role !== 'mentioned')
+        .map((en) => `${getEntity(d, en.entityId)?.name ?? '?'} (${en.role})`);
+      if (parties.length) console.log(`    ${parties.join(', ')}`);
+    }
+
+    console.log(`\nELSEWHERE IN THE CORPUS, SAME PARTIES (${inv.related.length})`);
+    for (const e of inv.related.slice(0, 15)) {
+      console.log(`  ${e.occurredAt.slice(0, 10)} [${e.type}] ${e.summary}`);
+    }
+    if (inv.related.length === 0) console.log('  nothing');
+
+    console.log(`\nOTHER INGESTED ITEMS MENTIONING THESE PARTIES (${inv.relatedItems.length})`);
+    for (const it of inv.relatedItems.slice(0, 12)) {
+      console.log(`  ${it.publishedAt.slice(0, 10)} ${it.title}`);
+    }
+    if (inv.relatedItems.length === 0) console.log('  nothing');
+
+    const all = [...inv.connections, ...inv.hypotheses];
+    console.log(`\nCONNECTIONS (${all.length})`);
+    for (const c of all) {
+      const from = getEvent(d, c.fromEventId);
+      const to = getEvent(d, c.toEventId);
+      console.log(`  [${c.basis}/${c.kind}] confidence ${c.confidence.toFixed(2)}, lag ${Math.round(c.lagDays)}d`);
+      console.log(`    ${c.explanation}`);
+      if (from) console.log(`    A: ${from.summary}`);
+      if (to) console.log(`    B: ${to.summary}`);
+      if (c.falsifier) console.log(`    would falsify: ${c.falsifier}`);
+    }
+    if (all.length === 0) {
+      // The honest and most common outcome. Said plainly so it does not read as
+      // a failure to run.
+      console.log('  Nothing joined. That is the common result and it is a real answer:');
+      console.log('  no other event in the corpus shares a party with this one inside the window.');
+      if (!o.hypotheses) console.log('  Try -H to have the model propose links, capped and falsifiable.');
+    }
+  });
+
+program
   .command('extract')
-  .description('Turn unprocessed items into structured events (uses the API)')
+  .description('Turn triaged items into structured events (uses the API)')
   .option('-l, --limit <n>', 'maximum items to process', Number)
   .action(async (o) => {
     const d = db();
@@ -281,13 +402,20 @@ program
 
 program
   .command('run')
-  .description('Full pipeline: ingest, extract, link, thread, brief')
+  .description('Full pipeline: ingest, triage, extract, link, thread, brief')
   .option('--no-hypotheses', 'skip model-proposed connections')
   .action(async (o) => {
     const d = db();
     console.log('== ingest ==');
     const ing = await ingest(d, cfg, {});
     console.log(`${ing.reduce((n, r) => n + r.inserted, 0)} new items`);
+
+    // Triage gates everything downstream: extraction only ever runs on what
+    // this stage decided was worth reading.
+    console.log('== triage ==');
+    const tr = await triage(d, cfg, {});
+    const kept = tr.results.filter((r) => r.verdict !== 'mundane').length;
+    console.log(`${tr.results.length} judged, ${kept} kept`);
 
     console.log('== extract ==');
     const ex = await extract(d, cfg, {});

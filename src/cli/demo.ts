@@ -1,5 +1,6 @@
 import type { DB } from '../core/db.js';
 import { insertEvent, insertItem, resolveEntity, upsertSource } from '../core/store.js';
+import { UNTRIAGED } from '../core/types.js';
 import type { Event, EventEntity, Item, Source } from '../core/types.js';
 
 /**
@@ -27,6 +28,7 @@ function mkItem(id: string, sourceId: string, title: string, publishedAt: string
     title, summary: title, body: null, author: null,
     publishedAt, fetchedAt: new Date().toISOString(), raw: null,
     extractedAt: new Date().toISOString(), extractionError: null,
+    ...UNTRIAGED,
   };
 }
 

@@ -1,6 +1,7 @@
 import type { Config } from '../core/config.js';
 import { politeFetch } from '../core/http.js';
 import { stableId } from '../core/ids.js';
+import { UNTRIAGED } from '../core/types.js';
 import type { Item, Source } from '../core/types.js';
 
 /**
@@ -82,6 +83,7 @@ export function parseAwards(
       fetchedAt,
       raw: a as unknown as Record<string, unknown>,
       extractedAt: null,
+      ...UNTRIAGED,
       extractionError: null,
     }];
   });

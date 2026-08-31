@@ -54,7 +54,12 @@ CREATE TABLE IF NOT EXISTS items (
   fetched_at       TEXT NOT NULL,
   raw              TEXT,
   extracted_at     TEXT,
-  extraction_error TEXT
+  extraction_error TEXT,
+  triaged_at       TEXT,
+  triage_verdict   TEXT,
+  triage_topic     TEXT,
+  triage_reason    TEXT,
+  triage_angle     TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS items_source_external ON items(source_id, external_id);
 CREATE INDEX IF NOT EXISTS items_published ON items(published_at DESC);
@@ -206,6 +211,46 @@ CREATE TRIGGER IF NOT EXISTS items_fts_upd AFTER UPDATE ON items BEGIN
 END;
 `;
 
+/**
+ * Columns added after a database may already exist in the wild.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is a no-op against a table that is already
+ * there, so a new column in SCHEMA never reaches an existing corpus. Rather
+ * than carry a migration framework for a single-user SQLite file, we add
+ * columns idempotently on open: cheap, ordered, and safe to run every time.
+ */
+const ADDED_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: 'items', column: 'triaged_at', ddl: 'TEXT' },
+  { table: 'items', column: 'triage_verdict', ddl: 'TEXT' },
+  { table: 'items', column: 'triage_topic', ddl: 'TEXT' },
+  { table: 'items', column: 'triage_reason', ddl: 'TEXT' },
+  { table: 'items', column: 'triage_angle', ddl: 'TEXT' },
+];
+
+/**
+ * Indexes over columns that ADDED_COLUMNS may have just created.
+ *
+ * These cannot live in SCHEMA: on an existing database `CREATE TABLE IF NOT
+ * EXISTS` is a no-op, so the index would be asked to reference a column that
+ * does not exist yet and the whole schema exec would fail. Tables first,
+ * columns second, indexes over those columns last.
+ */
+const POST_MIGRATION_INDEXES = `
+-- Drives the triage queue, which every item passes through before extraction.
+CREATE INDEX IF NOT EXISTS items_untriaged ON items(triaged_at) WHERE triaged_at IS NULL;
+-- Drives the reading queue: what survived triage, best first.
+CREATE INDEX IF NOT EXISTS items_triage_verdict ON items(triage_verdict, published_at DESC);
+`;
+
+function addMissingColumns(db: DB): void {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const present = db
+      .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
+      .get(table, column);
+    if (!present) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
 export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
@@ -213,6 +258,8 @@ export function openDb(path: string): DB {
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');
   db.exec(SCHEMA);
+  addMissingColumns(db);
+  db.exec(POST_MIGRATION_INDEXES);
   return db;
 }
 
@@ -263,6 +310,11 @@ export const rowToItem = (r: any): Item => ({
   raw: json(r.raw, null as Record<string, unknown> | null),
   extractedAt: r.extracted_at,
   extractionError: r.extraction_error,
+  triagedAt: r.triaged_at ?? null,
+  triageVerdict: r.triage_verdict ?? null,
+  triageTopic: r.triage_topic ?? null,
+  triageReason: r.triage_reason ?? null,
+  triageAngle: r.triage_angle ?? null,
 });
 
 export const rowToEntity = (r: any): Entity => ({

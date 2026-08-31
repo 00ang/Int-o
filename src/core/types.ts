@@ -115,7 +115,78 @@ export interface Item {
   /** Set once extraction has run, successfully or not. */
   extractedAt: string | null;
   extractionError: string | null;
+  /** Set once triage has read it. See Triage below. */
+  triagedAt: string | null;
+  triageVerdict: TriageVerdict | null;
+  /** What the item is about, in a few words. Written by triage, for scanning. */
+  triageTopic: string | null;
+  /** Why triage landed where it did. One sentence. */
+  triageReason: string | null;
+  /**
+   * What would make this more than it appears - the thing worth checking.
+   * Null when triage saw nothing to pull on, which is the common case.
+   */
+  triageAngle: string | null;
 }
+
+/**
+ * Triage is the judgement the rest of the system was missing: is this worth
+ * anyone's attention?
+ *
+ * It runs on every ingested item, before extraction, and it is deliberately
+ * cheap - a fast model reading what the source published. Most news is
+ * procedural, and a system that spends the same effort on a locomotive horn
+ * regulation as on a disclosed position in a defence contractor is a system
+ * that will bury the second under the first.
+ *
+ * The bar is *not* importance in the wire-service sense. A major earthquake is
+ * important and, for these purposes, mundane: it is exactly what it appears to
+ * be. The bar is whether there is plausibly more here than the headline says -
+ * money or power doing something the summary does not fully explain.
+ *
+ * Triage never concludes that something is suspicious. It says "worth a look"
+ * and stops. What gets investigated is a human decision, which is what keeps
+ * this from becoming the conspiracy generator the whole design guards against.
+ */
+export type TriageVerdict =
+  /** Routine or procedural. Exactly what it appears to be. Costs nothing more. */
+  | 'mundane'
+  /** Something to pull on. Enters the queue for a human to consider. */
+  | 'worth-a-look'
+  /** Clearly consequential. Surfaces at the top of the queue. */
+  | 'notable';
+
+/** Ordering for display and for deciding what to extract first. */
+export const TRIAGE_RANK: Record<TriageVerdict, number> = {
+  notable: 2,
+  'worth-a-look': 1,
+  mundane: 0,
+};
+
+/** The triage fields of a freshly fetched item: nothing has read it yet. */
+export const UNTRIAGED = {
+  triagedAt: null,
+  triageVerdict: null,
+  triageTopic: null,
+  triageReason: null,
+  triageAngle: null,
+} as const;
+
+/**
+ * Structured records - market snapshots, imported disclosures - bypass triage.
+ *
+ * Triage decides what a person should read, and these are not written to be
+ * read: they are data the detectors and the forecast anchor consume directly.
+ * Marking them at ingest keeps them out of the reading queue without spending
+ * a model call to reach the conclusion we already know.
+ */
+export const structuredRecordTriage = (at: string) => ({
+  triagedAt: at,
+  triageVerdict: 'mundane' as TriageVerdict,
+  triageTopic: 'structured record',
+  triageReason: 'A dataset row rather than a news item; consumed directly by the detectors.',
+  triageAngle: null,
+});
 
 // ---------------------------------------------------------------------------
 // Entities

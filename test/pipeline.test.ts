@@ -3,12 +3,14 @@ import { openDb, type DB } from '../src/core/db.js';
 import { slugifyEntity, stableId } from '../src/core/ids.js';
 import {
   calibration, counts, eventsSharingEntities, findEntityByTicker, insertConnection,
-  insertEvent, insertForecast, insertItem, resolveEntity, resolveForecast, searchItems,
-  upsertSource,
+  insertEvent, insertForecast, insertItem, itemsAwaitingExtraction, itemsAwaitingTriage,
+  resolveEntity, resolveForecast, saveTriage, searchItems, triagedQueue, upsertSource,
 } from '../src/core/store.js';
 import type { Event, EventEntity, Item, Source } from '../src/core/types.js';
+import { UNTRIAGED } from '../src/core/types.js';
 import { runAllPairRules, runEntityOverlap, scorePair } from '../src/pipeline/detectors/deterministic.js';
 import { PAIR_RULES } from '../src/pipeline/detectors/rules.js';
+import { attribute } from '../src/pipeline/triage.js';
 
 let db: DB;
 beforeEach(() => { db = openDb(':memory:'); });
@@ -23,7 +25,8 @@ const item = (id: string, sourceId = 'src', over: Partial<Item> = {}): Item => (
   id, sourceId, externalId: id, url: `https://x/${id}`, title: `Title ${id}`,
   summary: null, body: null, author: null,
   publishedAt: '2026-08-20T12:00:00.000Z', fetchedAt: '2026-08-20T12:00:00.000Z',
-  raw: null, extractedAt: null, extractionError: null, ...over,
+  raw: null, extractedAt: null, extractionError: null,
+  ...UNTRIAGED, ...over,
 });
 
 function makeEvent(
@@ -310,5 +313,103 @@ describe('stable ids', () => {
   it('are deterministic across runs', () => {
     expect(stableId('item', 'a', 'b')).toBe(stableId('item', 'a', 'b'));
     expect(stableId('item', 'a', 'b')).not.toBe(stableId('item', 'a', 'c'));
+  });
+});
+
+describe('triage gating', () => {
+  beforeEach(() => {
+    upsertSource(db, source());
+  });
+
+  it('queues every fetched item for triage, newest first', () => {
+    insertItem(db, item('old', 'src', { publishedAt: '2026-01-01T00:00:00.000Z' }));
+    insertItem(db, item('new', 'src', { publishedAt: '2026-08-01T00:00:00.000Z' }));
+    expect(itemsAwaitingTriage(db, 10).map((i) => i.id)).toEqual(['new', 'old']);
+  });
+
+  it('drops an item out of the triage queue once judged', () => {
+    insertItem(db, item('a'));
+    saveTriage(db, 'a', 'mundane', 'routine notice', 'Scheduled filing.', null);
+    expect(itemsAwaitingTriage(db, 10)).toHaveLength(0);
+  });
+
+  // The change the whole stage exists for: extraction never runs on an item
+  // nothing has decided is worth reading.
+  it('withholds untriaged items from extraction', () => {
+    insertItem(db, item('a'));
+    expect(itemsAwaitingExtraction(db, 10)).toHaveLength(0);
+  });
+
+  it('withholds mundane items from extraction', () => {
+    insertItem(db, item('a'));
+    saveTriage(db, 'a', 'mundane', 'routine notice', 'Scheduled filing.', null);
+    expect(itemsAwaitingExtraction(db, 10)).toHaveLength(0);
+  });
+
+  it('releases items that survived triage, best first', () => {
+    insertItem(db, item('look', 'src', { publishedAt: '2026-08-02T00:00:00.000Z' }));
+    insertItem(db, item('note', 'src', { publishedAt: '2026-08-01T00:00:00.000Z' }));
+    saveTriage(db, 'look', 'worth-a-look', 'a thing', 'Something to check.', 'who gains');
+    saveTriage(db, 'note', 'notable', 'a bigger thing', 'A gap worth naming.', 'the terms');
+    // notable outranks worth-a-look even though it is the older item.
+    expect(itemsAwaitingExtraction(db, 10).map((i) => i.id)).toEqual(['note', 'look']);
+  });
+
+  it('keeps mundane items out of the reading queue entirely', () => {
+    insertItem(db, item('a'));
+    insertItem(db, item('b'));
+    saveTriage(db, 'a', 'mundane', 'routine', 'Nothing here.', null);
+    saveTriage(db, 'b', 'worth-a-look', 'a thing', 'Something to check.', 'who gains');
+    expect(triagedQueue(db).map((i) => i.id)).toEqual(['b']);
+  });
+
+  it('can narrow the reading queue to items with something to pull on', () => {
+    insertItem(db, item('a'));
+    insertItem(db, item('b'));
+    saveTriage(db, 'a', 'notable', 'no angle', 'Consequential but plain.', null);
+    saveTriage(db, 'b', 'worth-a-look', 'has angle', 'Something to check.', 'who gains');
+    expect(triagedQueue(db, { withAngle: true }).map((i) => i.id)).toEqual(['b']);
+  });
+
+  it('preserves the triage judgement through a round trip', () => {
+    insertItem(db, item('a'));
+    saveTriage(db, 'a', 'worth-a-look', 'wheel tolerances', 'A named party gains.', 'which railroad filed it');
+    const [back] = triagedQueue(db);
+    expect(back.triageVerdict).toBe('worth-a-look');
+    expect(back.triageTopic).toBe('wheel tolerances');
+    expect(back.triageAngle).toBe('which railroad filed it');
+    expect(back.triagedAt).not.toBeNull();
+  });
+});
+
+describe('triage batch attribution', () => {
+  const judged = (index: number, over: Record<string, unknown> = {}) => ({
+    index, verdict: 'mundane' as const, topic: `t${index}`,
+    reason: 'because', angle: null, ...over,
+  });
+
+  it('matches judgements to items by the echoed index, not by position', () => {
+    const items = [item('a'), item('b'), item('c')];
+    // Returned out of order, as a batched response legitimately can be.
+    const out = attribute(items, [judged(2), judged(0), judged(1)]);
+    expect(out.map((o) => o.item.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('drops an index that was never sent rather than guessing', () => {
+    const items = [item('a'), item('b')];
+    const out = attribute(items, [judged(0), judged(7)]);
+    expect(out.map((o) => o.item.id)).toEqual(['a']);
+  });
+
+  it('keeps only the first judgement for a repeated index', () => {
+    const items = [item('a'), item('b')];
+    const out = attribute(items, [judged(0, { topic: 'first' }), judged(0, { topic: 'second' })]);
+    expect(out).toHaveLength(1);
+    expect(out[0].judged.topic).toBe('first');
+  });
+
+  // An item left unattributed stays untriaged, so it comes back next run.
+  it('returns nothing when the response is empty', () => {
+    expect(attribute([item('a')], [])).toEqual([]);
   });
 });

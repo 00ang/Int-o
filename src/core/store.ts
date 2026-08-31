@@ -97,13 +97,88 @@ export function getItem(db: DB, id: string): Item | null {
   return r ? rowToItem(r as any) : null;
 }
 
-/** The extraction queue. Oldest first so threads build in chronological order. */
-export function itemsAwaitingExtraction(db: DB, limit: number): Item[] {
+/**
+ * The triage queue: everything fetched but not yet judged, newest first.
+ *
+ * This is the widest queue in the system - every item passes through it - which
+ * is why triage runs batched on a cheap model.
+ */
+export function itemsAwaitingTriage(db: DB, limit: number): Item[] {
   return db
     .prepare(
       `SELECT * FROM items
+        WHERE triaged_at IS NULL
+        ORDER BY published_at DESC
+        LIMIT ?`,
+    )
+    .all(limit)
+    .map(rowToItem);
+}
+
+export function saveTriage(
+  db: DB,
+  itemId: string,
+  verdict: string,
+  topic: string,
+  reason: string,
+  angle: string | null,
+): void {
+  db.prepare(
+    `UPDATE items
+        SET triaged_at = ?, triage_verdict = ?, triage_topic = ?,
+            triage_reason = ?, triage_angle = ?
+      WHERE id = ?`,
+  ).run(nowIso(), verdict, topic, reason, angle, itemId);
+}
+
+/**
+ * The reading queue: what survived triage, best first.
+ *
+ * This is the list a person actually looks at, and the thing `investigate` is
+ * pointed at. Mundane items are excluded rather than ranked last - the point of
+ * triage is that they never take up attention again.
+ */
+export function triagedQueue(
+  db: DB,
+  opts: { limit?: number; verdict?: string; withAngle?: boolean } = {},
+): Item[] {
+  const where = ["triage_verdict IS NOT NULL", "triage_verdict != 'mundane'"];
+  const params: unknown[] = [];
+  if (opts.verdict) {
+    where.push('triage_verdict = ?');
+    params.push(opts.verdict);
+  }
+  if (opts.withAngle) where.push('triage_angle IS NOT NULL');
+  params.push(opts.limit ?? 50);
+  return db
+    .prepare(
+      `SELECT * FROM items
+        WHERE ${where.join(' AND ')}
+        ORDER BY CASE triage_verdict WHEN 'notable' THEN 2 WHEN 'worth-a-look' THEN 1 ELSE 0 END DESC,
+                 published_at DESC
+        LIMIT ?`,
+    )
+    .all(...params)
+    .map(rowToItem);
+}
+
+/**
+ * The extraction queue.
+ *
+ * Gated on triage: an item is only worth the cost of structured extraction once
+ * something has decided it is worth reading. This is the change that stops the
+ * pipeline spending its budget on routine regulatory housekeeping.
+ */
+export function itemsAwaitingExtraction(db: DB, limit: number): Item[] {
+  return db
+    .prepare(
+      // Newest first, and best first: the point is to follow what is happening
+      // now, and the corpus reaches back decades on some primary sources.
+      `SELECT * FROM items
         WHERE extracted_at IS NULL AND extraction_error IS NULL
-        ORDER BY published_at ASC
+          AND triage_verdict IS NOT NULL AND triage_verdict != 'mundane'
+        ORDER BY CASE triage_verdict WHEN 'notable' THEN 2 WHEN 'worth-a-look' THEN 1 ELSE 0 END DESC,
+                 published_at DESC
         LIMIT ?`,
     )
     .all(limit)
@@ -337,6 +412,14 @@ export function tradeEvents(
         ORDER BY e.occurred_at DESC
         LIMIT ?`,
     ).all(...params),
+  );
+}
+
+/** Every event extracted from one item. The unit an investigation starts from. */
+export function eventsForItem(db: DB, itemId: string): Event[] {
+  return hydrate(
+    db,
+    db.prepare('SELECT * FROM events WHERE item_id = ? ORDER BY occurred_at ASC').all(itemId),
   );
 }
 

@@ -140,3 +140,39 @@ export const ProposedForecastsSchema = z.object({
 });
 
 export type ProposedForecast = z.infer<typeof ProposedForecastSchema>;
+
+/**
+ * The triage judgement.
+ *
+ * This is the schema for the only question the system asks about every single
+ * thing it fetches: is this worth a person's attention? It is deliberately
+ * small - a verdict, a topic, a reason, and at most one thread to pull on -
+ * because triage is a filter, not an analysis. The analysis happens later, to
+ * the few items that earn it.
+ *
+ * `angle` is the one field that does real work downstream. It is what
+ * `investigate` starts from, and it is nullable because most of the time there
+ * is genuinely nothing to pull on, and saying so is the honest answer.
+ */
+export const TriageVerdictSchema = z.enum(['mundane', 'worth-a-look', 'notable']);
+
+export const TriagedItemSchema = z.object({
+  index: z.number().int()
+    .describe('The index of the item being judged, copied from the input. Every item gets exactly one entry.'),
+  verdict: TriageVerdictSchema
+    .describe('mundane: exactly what it appears to be. worth-a-look: something here does not fully add up. notable: consequential and worth reading today.'),
+  topic: z.string()
+    .describe('What this is about, in a few words. Written to be scanned in a list, not to summarise.'),
+  reason: z.string()
+    .describe('One sentence saying why it landed there. For mundane items, why it is routine.'),
+  angle: z.string().nullable()
+    .describe('The specific thing that would make this more than it appears - a party worth checking, a beneficiary the piece does not name, a timing worth confirming. Null when there is nothing to pull on, which is the common case.'),
+});
+
+export const TriageBatchSchema = z.object({
+  items: z.array(TriagedItemSchema)
+    .describe('One entry per input item, in the same order.'),
+});
+
+export type TriagedItem = z.infer<typeof TriagedItemSchema>;
+export type TriageBatch = z.infer<typeof TriageBatchSchema>;

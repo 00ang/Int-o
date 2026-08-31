@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import type { DB } from '../core/db.js';
 import { stableId } from '../core/ids.js';
 import { insertEvent, insertItem, resolveEntity, upsertSource } from '../core/store.js';
+import { structuredRecordTriage } from '../core/types.js';
 import type {
   Domain, Event, EventEntity, Item, Source, Tier,
 } from '../core/types.js';
@@ -602,6 +603,7 @@ export function tradeToItem(t: TradeRecord, source: Source, fetchedAt = new Date
     // Already structured. Sending it to the LLM extractor would cost money to
     // re-derive fields we parsed exactly.
     extractedAt: fetchedAt,
+    ...structuredRecordTriage(fetchedAt),
     extractionError: null,
   };
 }
