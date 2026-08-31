@@ -54,28 +54,28 @@ export default function InvestigateButton({ id, hasEvents }: { id: string; hasEv
       </div>
 
       {state === 'error' ? (
-        <div className="field" style={{ borderLeftColor: 'var(--stamp)' }}>
+        <div className="assess" style={{ color: 'var(--stamp)' }}>
           <b style={{ color: 'var(--stamp)' }}>Could not run</b>{msg}
         </div>
       ) : null}
 
       {state === 'done' && res ? (
         <div>
-          <p className="note" style={{ marginBottom: 12 }}>
+          <p className="instruction" style={{ marginBottom: 12 }}>
             {res.events} event{res.events === 1 ? '' : 's'} in this item &middot;{' '}
             {res.related.length} elsewhere in the corpus sharing a party &middot;{' '}
             {res.relatedItems.length} unextracted items mentioning them
           </p>
 
           {res.connections.length === 0 ? (
-            <div className="field assess">
+            <div className="assess">
               <b>Result</b>
               Nothing joined. No other event in the corpus shares a party with this one inside the
               window. That is the common result and it is a real answer, not a failure to run.
             </div>
           ) : (
             res.connections.map((c, i) => (
-              <div className="field" key={i}>
+              <div className="assess" key={i}>
                 <b>{c.basis} &middot; {c.kind} &middot; {c.confidence.toFixed(2)}</b>
                 {c.explanation}
                 {c.falsifier ? <div style={{ marginTop: 6, color: 'var(--carbon-3)' }}>Would falsify: {c.falsifier}</div> : null}

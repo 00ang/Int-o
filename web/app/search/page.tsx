@@ -12,7 +12,7 @@ export default async function Search({ searchParams }: { searchParams: Promise<{
   return (
     <section className="sheet">
       <div className="sheet-head"><span className="num">4.</span><h2>Search the holdings</h2></div>
-      <p className="note">
+      <p className="instruction">
         Full text over every item ingested, judged or not. This reaches material the event
         detectors cannot see: an item nobody has extracted is invisible to a query over events,
         but it is still on file.
@@ -21,7 +21,7 @@ export default async function Search({ searchParams }: { searchParams: Promise<{
         <input type="search" name="q" defaultValue={q ?? ''} placeholder="Party, phrase, docket number&hellip;" aria-label="Search all items" />
         <button className="btn btn-go" type="submit">Search</button>
       </form>
-      {error ? <div className="field" style={{ borderLeftColor: 'var(--stamp)', marginTop: 16 }}><b style={{ color: 'var(--stamp)' }}>Query rejected</b>{error}</div> : null}
+      {error ? <div className="assess" style={{ marginTop: 16 }}><b style={{ color: 'var(--stamp)' }}>Query rejected</b>{error}</div> : null}
       {q && !error ? (
         rows.length === 0 ? <p className="empty">Nothing on file matches &ldquo;{q}&rdquo;.</p> : (
           <div className="tscroll" style={{ marginTop: 18 }}>

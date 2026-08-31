@@ -33,12 +33,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <header className="docheader">
           <div className="wrap">
-            <div className="formline">
-              <span>Doc <b>ALL-INT/{today.replace(/-/g, '')}</b></span>
-              <span>Sheet <b>1</b></span>
-              <span>Origin <b>Open sources</b></span>
-              <span>Handling <b>No restriction</b></span>
+            {/* The cable header block: field label, value, in a ruled grid. */}
+            <div className="fieldblock">
+              <div><b>Docn</b> ALL-INT/{today.replace(/-/g, '')}</div>
+              <div><b>Clas</b> UNCLAS</div>
+              <div><b>Sour</b> Open literature</div>
+              <div><b>Hand</b> No restriction</div>
             </div>
+
             <div className="masthead">
               <div>
                 <h1 className="wordmark"><a href="/">All-Int</a></h1>
@@ -46,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
               <span className="stamp stamp-red">Working copy</span>
             </div>
+
             <nav className="docnav">
               {NAV.map((n) => <a key={n.href} href={n.href}>{n.label}</a>)}
             </nav>
@@ -57,16 +60,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer>
           <div className="wrap">
             <p>
-              ALL-INT reads primary records and credible press, judges what deserves a second look,
-              and goes digging only when asked.<br />
-              Verdicts on this page are machine judgements about <b>where to look</b>. They are not
-              findings, and nothing here asserts wrongdoing by any party.
+              ALL-INT reads primary records and credible press, judges what deserves a second
+              look, and goes digging only when asked.<br />
+              Verdicts here are machine judgements about <b>where to look</b>. They are not
+              findings, and nothing asserts wrongdoing by any party.
             </p>
+            <div className="blots" aria-hidden="true"><i /><i /><i /></div>
           </div>
         </footer>
-        <div className="classbar bottom">
-          Unclassified &middot; end of document
-        </div>
+        <div className="classbar">Unclassified &middot; end of document</div>
       </body>
     </html>
   );

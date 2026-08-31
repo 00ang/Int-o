@@ -36,9 +36,10 @@ export default async function Page({
           <div className="cell"><b>{s.events}</b><span>Events</span></div>
           <div className="cell"><b>{s.sourcesLive}</b><span>Live feeds</span></div>
         </div>
-        <p className="note" style={{ marginTop: 16, marginBottom: 0 }}>
-          {s.untriaged.toLocaleString()} items remain unread. Everything below survived triage;
-          the rest was discarded as routine and costs nothing further.
+        <p className="instruction" style={{ marginTop: 15, marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>
+          {s.untriaged.toLocaleString()} items remain unread. Everything listed below survived
+          triage; the remainder was discarded as routine and costs nothing further. Absence from
+          this queue is not evidence of absence in the world.
         </p>
       </section>
 
@@ -46,7 +47,7 @@ export default async function Page({
         <div className="sheet-head">
           <span className="num">2.</span>
           <h2>Items retained for review</h2>
-          <span className="stamp stamp-purple">{rows.length} sheets</span>
+          <span className="stamp stamp-hi">{rows.length} sheets</span>
         </div>
 
         <form className="searchform" action="/" method="get">
@@ -72,7 +73,7 @@ export default async function Page({
             {rows.map((r, i) => (
               <article className="record" key={r.id}>
                 <div className="rec-top">
-                  <span className={`stamp ${r.verdict === 'notable' ? 'stamp-red' : 'stamp-blue'}`}>
+                  <span className={`stamp ${r.verdict === 'notable' ? 'stamp-red' : 'stamp-hi'}`}>
                     {r.verdict === 'notable' ? 'Notable' : 'Worth a look'}
                   </span>
                   <span className="refno">
@@ -83,9 +84,9 @@ export default async function Page({
                 <h3 className="rec-topic"><a href={`/item/${r.id}`}>{r.topic}</a></h3>
                 <p className="rec-title">{r.title}</p>
                 {r.angle ? (
-                  <div className="field"><b>Angle &mdash; check next</b>{r.angle}</div>
+                  <p className="hilite"><b>Angle &mdash; check next</b><span>{r.angle}</span></p>
                 ) : null}
-                <div className="field assess"><b>Assessment</b>{r.reason}</div>
+                <p className="assess"><b>Assessment</b>{r.reason}</p>
                 <div className="rec-foot">
                   <span className={`tier tier-${r.tier}`}>{r.tier}</span>
                   <span>{r.source}</span>

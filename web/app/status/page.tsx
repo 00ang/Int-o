@@ -22,19 +22,19 @@ export default async function Status() {
       </section>
       <section className="sheet">
         <div className="sheet-head"><span className="num">6.</span><h2>Standing limitations</h2></div>
-        <p className="note">
+        <p className="instruction">
           Recorded here rather than buried, because a system that hides its gaps is not an
           intelligence system.
         </p>
-        <div className="field assess"><b>Coverage</b>
+        <div className="assess"><b>Coverage</b>
           {s.untriaged.toLocaleString()} of {s.items.toLocaleString()} items have never been read.
           Absence from this queue is not evidence of absence in the world.
         </div>
-        <div className="field assess"><b>Duplicate coverage</b>
+        <div className="assess"><b>Duplicate coverage</b>
           Several outlets reporting one event are judged independently and appear as separate
           sheets. Collapsing them is storyline work and is not yet running.
         </div>
-        <div className="field assess"><b>Congressional trade detail</b>
+        <div className="assess"><b>Congressional trade detail</b>
           The House Clerk index gives who filed and when, never the ticker or size. Do not read the
           absence of trade detail as an absence of trading.
         </div>

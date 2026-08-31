@@ -6,7 +6,7 @@ export default async function Entities() {
   return (
     <section className="sheet">
       <div className="sheet-head"><span className="num">3.</span><h2>Parties on file</h2></div>
-      <p className="note">
+      <p className="instruction">
         Every party the extractor has resolved, by how often it appears. Names are canonicalised,
         so &ldquo;Lockheed Martin Corp.&rdquo; and &ldquo;Lockheed Martin&rdquo; are one party.
       </p>

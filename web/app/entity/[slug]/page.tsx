@@ -12,9 +12,9 @@ export default async function EntityPage({ params }: { params: Promise<{ slug: s
     <section className="sheet">
       <div className="sheet-head">
         <span className="num">P.</span><h2>{ent.name}</h2>
-        <span className="stamp stamp-purple">{ent.kind}</span>
+        <span className="stamp stamp-hi">{ent.kind}</span>
       </div>
-      <p className="note">What this party has been involved in, newest first. Role is how they
+      <p className="instruction">What this party has been involved in, newest first. Role is how they
         figured in each event &mdash; who acted, who gained, who was regulated.</p>
       {events.length === 0 ? <p className="empty">No events on file.</p> : (
         <div className="tscroll">
