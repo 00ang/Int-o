@@ -6,7 +6,7 @@ import {
   connectionsSince, counts, eventsForEntity, findEntityByName, getEvent, getItem, insertConnection,
   getSource, listSources, listThreads, searchItems, setConnectionVerdict, threadEvents,
   topEntities, latestBrief, getThread, tradeEvents, listForecasts, getForecast,
-  resolveForecast, calibration, triagedQueue, getEntity,
+  resolveForecast, calibration, triagedQueue, getEntity, findEntityBySlug,
 } from '../core/store.js';
 import { buildBrief } from '../pipeline/brief.js';
 import { extract } from '../pipeline/extract.js';
@@ -19,6 +19,7 @@ import { triage } from '../pipeline/triage.js';
 import { investigate } from '../pipeline/investigate.js';
 import { fetchPtr } from '../sources/ptr-pdf.js';
 import { buildGraph, graphStats } from '../core/graph.js';
+import { buildProfiles, getProfile } from '../pipeline/profile.js';
 import { activateFromItem } from '../pipeline/activate.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { fetchBodies } from '../pipeline/bodies.js';
@@ -307,6 +308,80 @@ program
       `${res.lateFilings} filed past the 45-day deadline, ${res.withoutTicker} without a ticker.`,
     );
     console.log('Next: all-int link');
+  });
+
+program
+  .command('profile')
+  .description('Write background dossiers on the parties the corpus runs through (uses the API)')
+  .option('-l, --limit <n>', 'how many parties to profile', Number, 20)
+  .option('-m, --min-events <n>', 'skip parties thinner than this', Number, 2)
+  .option('--rebuild', 'rewrite dossiers that already exist')
+  .action(async (o) => {
+    const d = db();
+    let thin = 0, failed = 0, claims = 0;
+    const rs = await buildProfiles(d, cfg, {
+      limit: o.limit, minEvents: o.minEvents, rebuild: o.rebuild,
+      onProgress: (r) => {
+        if (r.error) { failed++; console.log(`  ERROR  ${r.name}: ${r.error.slice(0, 70)}`); }
+        else if (r.thin) { thin++; console.log(`  thin   ${r.name}`); }
+        else { claims += r.claims; console.log(`  ${String(r.claims).padStart(2)} claims  ${r.name}`); }
+      },
+    });
+    console.log(
+      `\n${rs.length} parties: ${rs.length - thin - failed} profiled with ${claims} claims, ` +
+      `${thin} too obscure to profile, ${failed} failed.`,
+    );
+    // A high thin rate is honest rather than broken - most parties in a news
+    // corpus genuinely are minor - but it is worth seeing.
+    if (rs.length > 0) {
+      console.log(`${Math.round((thin / rs.length) * 100)}% came back thin.`);
+    }
+  });
+
+program
+  .command('dossier <slug>')
+  .description('Read one party\'s dossier')
+  .action((slug) => {
+    const d = db();
+    const ent = findEntityBySlug(d, slug);
+    if (!ent) { console.log(`No party matching "${slug}".`); return; }
+    const p = getProfile(d, ent.id);
+    if (!p) { console.log(`${ent.name} has no dossier yet. Run: all-int profile`); return; }
+
+    console.log(`${ent.name}  [${ent.kind}]`);
+    console.log(`${p.corpusEvents} events on file, dossier written ${p.builtAt.slice(0, 10)}\n`);
+    console.log(p.summary);
+
+    const mark = (b: string) => b === 'corpus' ? '[record]' : b === 'recalled' ? '[recalled]' : '[inferred]';
+    if (p.affiliations.length) {
+      console.log('\nAFFILIATIONS');
+      for (const a of p.affiliations) {
+        console.log(`  ${a.organisation} - ${a.role} (${a.period})`);
+        console.log(`    ${mark(a.basis)} confidence ${a.confidence.toFixed(2)}`);
+      }
+    }
+    if (p.history.length) {
+      console.log('\nPRIOR EPISODES');
+      for (const h of p.history) {
+        console.log(`  ${h.when}: ${h.what}`);
+        console.log(`    matters because: ${h.whyItMatters}`);
+        console.log(`    ${mark(h.basis)} confidence ${h.confidence.toFixed(2)}`);
+      }
+    }
+    if (p.capabilities.length) {
+      console.log('\nPOSITIONED TO');
+      for (const c of p.capabilities) {
+        console.log(`  ${c.capability}`);
+        console.log(`    would take:   ${c.whatItWouldTake}`);
+        console.log(`    trace if real: ${c.observableIfReal}`);
+        console.log(`    ${mark(c.basis)} confidence ${c.confidence.toFixed(2)}`);
+      }
+    }
+    if (p.watchPoints.length) {
+      console.log('\nWATCH FOR');
+      for (const w of p.watchPoints) console.log(`  ${w.watchFor}\n    ${w.whyItWouldMatter}`);
+    }
+    console.log('\nRecalled claims are the model asserting from training: plausible, unverified.');
   });
 
 program

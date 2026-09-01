@@ -176,3 +176,88 @@ export const TriageBatchSchema = z.object({
 
 export type TriagedItem = z.infer<typeof TriagedItemSchema>;
 export type TriageBatch = z.infer<typeof TriageBatchSchema>;
+
+/**
+ * A party's dossier.
+ *
+ * Every other schema in this file describes what a document asserted. This one
+ * describes what is known about a party independent of any single document -
+ * their background, who they have been attached to, and what they are in a
+ * position to do. That is the prior a new event is read against, and without it
+ * an event can only ever be an isolated fact.
+ *
+ * The `basis` field on every claim is what keeps this from becoming laundering.
+ * Extraction is forbidden from adding context the text does not carry, and for
+ * good reason. A dossier is the one place where outside knowledge is the point,
+ * so each claim must say where it came from - and a claim the model is
+ * asserting from training is marked as exactly that, never as a record.
+ */
+export const ClaimBasisSchema = z.enum([
+  /** A record in this corpus supports it. Checkable here. */
+  'corpus',
+  /** The model asserts it from training. Plausible, unverified, may be wrong. */
+  'recalled',
+  /** Neither states it; it follows from the other claims. */
+  'inferred',
+]);
+
+export const AffiliationSchema = z.object({
+  organisation: z.string().describe('The body this party has been attached to.'),
+  role: z.string().describe('What they did there. Specific, not "involved with".'),
+  period: z.string().describe('Years if known, e.g. "1999-2004", "since 2021", or "date unknown".'),
+  basis: ClaimBasisSchema,
+  confidence: z.number().min(0.05).max(0.95)
+    .describe('Never above 0.95. Background is rarely certain and must not read as if it were.'),
+});
+
+export const HistoryItemSchema = z.object({
+  when: z.string().describe('Year or period. "date unknown" is acceptable and better than a guess.'),
+  what: z.string().describe('What happened, in one sentence naming the parties involved.'),
+  whyItMatters: z.string().describe('What this would change about how a later event involving them reads.'),
+  basis: ClaimBasisSchema,
+  confidence: z.number().min(0.05).max(0.95),
+});
+
+/**
+ * What a party is positioned to do, whether or not they have.
+ *
+ * This is the possibility axis, and it is deliberately separate from history. A
+ * denial is not disproof: the useful question is whether the thing denied is
+ * within reach for this party, and what it would take. A capability claim must
+ * name the condition that would make it real, so it stays a question rather
+ * than becoming an accusation.
+ */
+export const CapabilitySchema = z.object({
+  capability: z.string().describe('What this party could plausibly do, given what they control.'),
+  whatItWouldTake: z.string()
+    .describe('The specific resource, authority, approval or partner required. This is what makes it checkable.'),
+  observableIfReal: z.string()
+    .describe('What would appear in the public record if they were pursuing it. A filing, a hire, a permit, a supply contract.'),
+  basis: ClaimBasisSchema,
+  confidence: z.number().min(0.05).max(0.95),
+});
+
+export const WatchPointSchema = z.object({
+  watchFor: z.string().describe('A specific future event that would be significant for this party.'),
+  whyItWouldMatter: z.string().describe('What it would tell you that you do not know now.'),
+});
+
+export const ProfileSchema = z.object({
+  summary: z.string()
+    .describe('Two to four sentences: who or what this party is, and why anyone tracking money or power would care. No hedging filler.'),
+  affiliations: z.array(AffiliationSchema)
+    .describe('Bodies this party has been attached to. Empty is correct for a party you know nothing reliable about.'),
+  history: z.array(HistoryItemSchema)
+    .describe('Prior episodes that change how a new event involving them reads.'),
+  capabilities: z.array(CapabilitySchema)
+    .describe('What they are positioned to do. Empty when nothing specific can be named.'),
+  watchPoints: z.array(WatchPointSchema)
+    .describe('Specific things whose occurrence would be worth knowing about.'),
+  /** Honest signal that the model has little to go on. */
+  thin: z.boolean()
+    .describe('True when you genuinely do not know much about this party. Say so rather than padding.'),
+});
+
+export type Profile = z.infer<typeof ProfileSchema>;
+export type Affiliation = z.infer<typeof AffiliationSchema>;
+export type Capability = z.infer<typeof CapabilitySchema>;

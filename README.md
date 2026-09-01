@@ -76,6 +76,8 @@ loop, all against recorded fixtures.
 | `ingest [--all] [-s id...]` | Fetch new items from due sources | no |
 | `import:trades <file> [-n]` | Import disclosed trades from CSV/JSON | no |
 | `ptr:fetch [-y year] [-l n]` | Read congressional PTR filing PDFs and import the trades | no |
+| `profile [-l n]` | Write background dossiers on the main parties | **yes** |
+| `dossier <name>` | Read one party's dossier | no |
 | `graph:build` | Wire the association map from the events on file | no |
 | `activate <id> [-H hops]` | Fire the map from one item and see what lights up | no |
 | `synthesize <id>` | Fire the map, then judge the chains that lit | **yes** |
@@ -124,6 +126,37 @@ article.
 
 An item whose body arrives after extraction has already run is reopened, since
 the text it was judged on has changed.
+
+## Party dossiers
+
+Extraction may not add context the text does not carry. That rule is what makes
+the events trustworthy, and it is also why a party was nothing but a name with a
+mention count. An event involving a name has no weight. The same event involving
+a party you know spent a decade on the board of the counterparty is information.
+
+`profile` writes a dossier per party: what they are, bodies they have been
+attached to, prior episodes that change how a new event involving them reads,
+and what they are positioned to do. `dossier <name>` reads one.
+
+**Every claim carries its own provenance**, because this is the one stage where
+outside knowledge is the point rather than the hazard:
+
+- `corpus` - a record here supports it, and you can check it here.
+- `recalled` - the model asserts it from training. Plausible, unverified,
+  possibly out of date. Most background is this, and it is labelled rather than
+  dressed up as a record.
+- `inferred` - follows from the other claims.
+
+**Capabilities are the possibility axis**, and they are deliberately separate
+from history. A denial is not disproof; the useful question about a denied thing
+is whether it is within reach for this party and what it would take. So every
+capability names the resource or approval required and the trace it would leave
+in the public record if they were pursuing it. That keeps a possibility a
+question someone can go and check, rather than an accusation.
+
+A dossier on a party the model does not reliably know comes back `thin` and
+nearly empty. A padded dossier is worse than none, because everything
+downstream treats it as knowledge.
 
 ## The association map
 

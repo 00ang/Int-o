@@ -328,6 +328,16 @@ export function findEntityByName(db: DB, name: string, kind?: EntityKind): Entit
   return r ? rowToEntity(r as any) : null;
 }
 
+/** Find a party by slug, or by a loose name match when the slug is not exact. */
+export function findEntityBySlug(db: DB, slug: string): Entity | null {
+  const exact = db.prepare('SELECT * FROM entities WHERE slug = ?').get(slugifyEntity(slug));
+  if (exact) return rowToEntity(exact as any);
+  const loose = db.prepare(
+    'SELECT * FROM entities WHERE slug LIKE ? ORDER BY mention_count DESC LIMIT 1',
+  ).get(`%${slugifyEntity(slug)}%`);
+  return loose ? rowToEntity(loose as any) : null;
+}
+
 export function findEntityByTicker(db: DB, ticker: string): Entity | null {
   const r = db
     .prepare('SELECT * FROM entities WHERE ticker = ? ORDER BY mention_count DESC')

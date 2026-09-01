@@ -873,6 +873,85 @@ const RESEARCH: Source[] = [
     intervalMinutes: 1440,
     notes: 'High volume. Consider filtering before extraction or it will dominate the corpus.',
   }),
+  // ---------------------------------------------------------------------------
+  // Civil society and specialist monitors.
+  //
+  // These publish the material professional analysis runs on - lobbying
+  // registrations, beneficial ownership, profit shifting, revolving-door
+  // tracking. A corpus of governments and newspapers reports decisions; these
+  // bodies report the money and the ownership behind them, which is where a
+  // non-obvious read usually comes from. Slow-moving by design, so daily polls.
+  //
+  // NOT HERE, AND THEY SHOULD BE. SIPRI (arms transfers), Transparency
+  // International (procurement, beneficial ownership), Global Witness
+  // (extractives supply chains), IEA and IRENA (capacity and cost curves) and
+  // IISS (order of battle) publish no discoverable RSS - their material lives
+  // in databases and PDF yearbooks. Each needs its own adapter, the way
+  // usaspending and stock-act have one. SIPRI is the highest value of them:
+  // arms-transfer data is the counterparty side of every defence award this
+  // corpus already ingests. Recorded here so the gap is a known absence rather
+  // than an oversight.
+  // ---------------------------------------------------------------------------
+  def({
+    id: 'opensecrets',
+    name: 'OpenSecrets money in politics',
+    kind: 'rss',
+    url: 'https://www.opensecrets.org/news/feed',
+    tier: 'research',
+    domains: ['politics', 'business'],
+    origin: 'US',
+    lean: 'n/a',
+    intervalMinutes: 1440,
+    notes: 'Lobbying and campaign finance. Who paid to be in the room before a rule moved.',
+  }),
+  def({
+    id: 'tax-justice',
+    name: 'Tax Justice Network',
+    kind: 'rss',
+    url: 'https://taxjustice.net/feed/',
+    tier: 'research',
+    domains: ['intl-business', 'macro', 'legal'],
+    origin: 'UK',
+    lean: 'n/a',
+    intervalMinutes: 1440,
+    notes: 'Profit shifting and secrecy jurisdictions - the structures a filing does not show.',
+  }),
+  def({
+    id: 'public-citizen',
+    name: 'Public Citizen',
+    kind: 'rss',
+    url: 'https://www.citizen.org/feed/',
+    tier: 'research',
+    domains: ['politics', 'legal', 'business'],
+    origin: 'US',
+    lean: 'left',
+    intervalMinutes: 1440,
+    notes: 'Regulatory capture and revolving-door tracking, often ahead of the trade press.',
+  }),
+  def({
+    id: 'hrw-news',
+    name: 'Human Rights Watch',
+    kind: 'rss',
+    url: 'https://www.hrw.org/rss/news',
+    tier: 'research',
+    domains: ['geopolitics', 'legal', 'politics'],
+    origin: 'US',
+    lean: 'n/a',
+    intervalMinutes: 1440,
+    notes: 'Country-level reporting that often precedes sanctions and export-control moves.',
+  }),
+  def({
+    id: 'amnesty-news',
+    name: 'Amnesty International',
+    kind: 'rss',
+    url: 'https://www.amnesty.org/en/feed/',
+    tier: 'research',
+    domains: ['geopolitics', 'legal'],
+    origin: 'UK',
+    lean: 'n/a',
+    intervalMinutes: 1440,
+    notes: 'Same function as HRW; kept separately because they diverge on which states they press.',
+  }),
   def({
     id: 'occrp',
     name: 'Organized Crime and Corruption Reporting Project',

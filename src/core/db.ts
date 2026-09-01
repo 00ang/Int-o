@@ -133,6 +133,18 @@ CREATE INDEX IF NOT EXISTS connections_from ON connections(from_event_id);
 CREATE INDEX IF NOT EXISTS connections_to ON connections(to_event_id);
 CREATE INDEX IF NOT EXISTS connections_rank ON connections(basis, confidence DESC);
 
+CREATE TABLE IF NOT EXISTS entity_profiles (
+  entity_id     TEXT PRIMARY KEY REFERENCES entities(id),
+  summary       TEXT NOT NULL,
+  affiliations  TEXT NOT NULL DEFAULT '[]',
+  history       TEXT NOT NULL DEFAULT '[]',
+  capabilities  TEXT NOT NULL DEFAULT '[]',
+  watch_points  TEXT NOT NULL DEFAULT '[]',
+  corpus_events INTEGER NOT NULL DEFAULT 0,
+  built_at      TEXT NOT NULL,
+  model         TEXT
+);
+
 CREATE TABLE IF NOT EXISTS graph_edges (
   a_id        TEXT NOT NULL REFERENCES entities(id),
   b_id        TEXT NOT NULL REFERENCES entities(id),
