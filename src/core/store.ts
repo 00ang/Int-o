@@ -332,9 +332,18 @@ export function findEntityByName(db: DB, name: string, kind?: EntityKind): Entit
 export function findEntityBySlug(db: DB, slug: string): Entity | null {
   const exact = db.prepare('SELECT * FROM entities WHERE slug = ?').get(slugifyEntity(slug));
   if (exact) return rowToEntity(exact as any);
+  // Fall back to matching every word given, in any order. Names on file carry
+  // artefacts from their source - the House index yields "Richard Dean Dr
+  // McCormick" because the honorific column lands mid-name - so requiring the
+  // query to be a contiguous substring makes a party unreachable by their
+  // actual name.
+  const words = slugifyEntity(slug).split(/\s+/).filter((w) => w.length > 1);
+  if (words.length === 0) return null;
   const loose = db.prepare(
-    'SELECT * FROM entities WHERE slug LIKE ? ORDER BY mention_count DESC LIMIT 1',
-  ).get(`%${slugifyEntity(slug)}%`);
+    `SELECT * FROM entities
+      WHERE ${words.map(() => 'slug LIKE ?').join(' AND ')}
+      ORDER BY mention_count DESC LIMIT 1`,
+  ).get(...words.map((w) => `%${w}%`));
   return loose ? rowToEntity(loose as any) : null;
 }
 
