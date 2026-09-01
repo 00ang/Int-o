@@ -3,6 +3,7 @@ import { openDb } from '../../../../../dist/core/db.js';
 import { loadConfig } from '../../../../../dist/core/config.js';
 import { edgeEvidence, neighbors } from '../../../../../dist/core/graph.js';
 import { getEntity } from '../../../../../dist/core/store.js';
+import { getProfile } from '../../../../../dist/pipeline/profile.js';
 
 /**
  * One party, and why it is wired to each of its neighbours.
@@ -52,8 +53,16 @@ export async function GET(
       };
     });
 
+    // Who they are travels with what they are wired to. A link between two
+    // names says little; a link between two known positions says more.
+    const p = getProfile(db, id);
     return NextResponse.json({
       party: { id: party.id, name: party.name, kind: party.kind, slug: party.slug },
+      bio: p === null ? null : {
+        summary: p.summary,
+        affiliations: p.affiliations,
+        capabilities: p.capabilities,
+      },
       links,
     });
   } catch (e) {

@@ -155,3 +155,96 @@ export function graphStats() {
     avgDegree: nodes === 0 ? 0 : (edges * 2) / nodes,
   };
 }
+
+/**
+ * Dossiers, for the read path.
+ *
+ * The claim shapes are duplicated from the pipeline schema rather than imported
+ * because this layer answers to the page, not to the extractor: a page needs
+ * the basis mark and the confidence rendered, and nothing else. What must not
+ * drift is the meaning of `basis`, which is why it is spelled out here too.
+ */
+export type ClaimBasis = 'corpus' | 'recalled' | 'inferred';
+
+export interface Affiliation {
+  organisation: string; role: string; period: string;
+  basis: ClaimBasis; confidence: number;
+}
+export interface HistoryItem {
+  when: string; what: string; whyItMatters: string;
+  basis: ClaimBasis; confidence: number;
+}
+export interface Capability {
+  capability: string; whatItWouldTake: string; observableIfReal: string;
+  basis: ClaimBasis; confidence: number;
+}
+export interface WatchPoint { watchFor: string; whyItWouldMatter: string }
+
+export interface Dossier {
+  entityId: string;
+  summary: string;
+  affiliations: Affiliation[];
+  history: HistoryItem[];
+  capabilities: Capability[];
+  watchPoints: WatchPoint[];
+  corpusEvents: number;
+  builtAt: string;
+  model: string | null;
+}
+
+function parseDossier(r: Record<string, unknown>): Dossier {
+  const json = <T,>(v: unknown, fallback: T): T => {
+    try { return JSON.parse(String(v)) as T; } catch { return fallback; }
+  };
+  return {
+    entityId: String(r.entity_id),
+    summary: String(r.summary ?? ''),
+    affiliations: json(r.affiliations, [] as Affiliation[]),
+    history: json(r.history, [] as HistoryItem[]),
+    capabilities: json(r.capabilities, [] as Capability[]),
+    watchPoints: json(r.watch_points, [] as WatchPoint[]),
+    corpusEvents: Number(r.corpus_events ?? 0),
+    builtAt: String(r.built_at ?? ''),
+    model: r.model == null ? null : String(r.model),
+  };
+}
+
+export function dossier(entityId: string): Dossier | null {
+  const r = db().prepare('SELECT * FROM entity_profiles WHERE entity_id = ?').get(entityId);
+  return r ? parseDossier(r as Record<string, unknown>) : null;
+}
+
+/** Dossiers for every party named in one item. What the item record needs. */
+export function dossiersForItem(itemId: string): Array<Dossier & { name: string; kind: string; slug: string }> {
+  return db().prepare(`
+    SELECT p.*, en.name, en.kind, en.slug
+      FROM entity_profiles p
+      JOIN entities en ON en.id = p.entity_id
+     WHERE p.entity_id IN (
+       SELECT DISTINCT ee.entity_id FROM events e
+         JOIN event_entities ee ON ee.event_id = e.id
+        WHERE e.item_id = @id AND ee.role != 'mentioned'
+     )
+  `).all({ id: itemId }).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      ...parseDossier(row),
+      name: String(row.name), kind: String(row.kind), slug: String(row.slug),
+    };
+  });
+}
+
+/** How much of the corpus has a dossier yet. */
+export function dossierCoverage() {
+  const one = (sql: string) => (db().prepare(sql).get() as { c: number }).c;
+  return {
+    written: one('SELECT COUNT(*) c FROM entity_profiles'),
+    parties: one('SELECT COUNT(DISTINCT entity_id) c FROM event_entities'),
+  };
+}
+
+/** Which parties have a dossier, for marking the party list. */
+export function partiesWithDossiers(): Set<string> {
+  const rows = db().prepare('SELECT entity_id FROM entity_profiles').all() as Array<{ entity_id: string }>;
+  return new Set(rows.map((r) => r.entity_id));
+}

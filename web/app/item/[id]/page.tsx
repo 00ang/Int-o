@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
-import { item, eventsForItem, connectionsForItem } from '../../../lib/queries';
+import { dossiersForItem, item, eventsForItem, connectionsForItem } from '../../../lib/queries';
 import InvestigateButton from './investigate';
 import Circled from '../../circled';
 import Network from './network';
+import DossierPanel from '../../dossier-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
   const events = eventsForItem(id);
   const connections = connectionsForItem(id);
+  const dossiers = dossiersForItem(id);
 
   return (
     <>
@@ -65,9 +67,40 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         </div>
       </section>
 
-      <section className="sheet" id="map">
+      <section className="sheet">
         <div className="sheet-head">
           <span className="num">B.</span>
+          <h2>Who these parties are</h2>
+          <span className={`stamp ${dossiers.length > 0 ? 'stamp-hi' : 'stamp-plain'}`}>
+            {dossiers.length} dossier{dossiers.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <p className="instruction">
+          Background on the parties this record names, held independently of what the record
+          asserts. An event involving a name carries no weight; the same event involving a party
+          with a known position does. Claims marked <b>unverified</b> come from model training
+          rather than from a record here.
+        </p>
+        {dossiers.length === 0 ? (
+          <p className="empty">
+            No dossiers for these parties yet &mdash; run all-int profile
+          </p>
+        ) : dossiers.map((d) => (
+          <div key={d.entityId} style={{ borderTop: '2px solid var(--rule)', paddingTop: 14, marginTop: 14 }}>
+            <h3 style={{ textTransform: 'uppercase', fontSize: '1.05rem', marginBottom: 4 }}>
+              <a href={`/entity/${encodeURIComponent(d.slug)}`}>{d.name}</a>{' '}
+              <span style={{ fontWeight: 400, color: 'var(--toner-3)', fontSize: '0.76rem' }}>
+                [{d.kind}]
+              </span>
+            </h3>
+            <DossierPanel dossier={d} name={d.name} compact />
+          </div>
+        ))}
+      </section>
+
+      <section className="sheet" id="map">
+        <div className="sheet-head">
+          <span className="num">C.</span>
           <h2>Association map</h2>
         </div>
         <p className="instruction">
@@ -82,7 +115,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
       <section className="sheet">
         <div className="sheet-head">
-          <span className="num">C.</span>
+          <span className="num">D.</span>
           <h2>Investigation</h2>
         </div>
         <p className="instruction">
@@ -95,7 +128,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
       {events.length > 0 ? (
         <section className="sheet">
-          <div className="sheet-head"><span className="num">D.</span><h2>Events extracted</h2></div>
+          <div className="sheet-head"><span className="num">E.</span><h2>Events extracted</h2></div>
           <div className="tscroll">
             <table>
               <thead><tr><th>Occurred</th><th>Type</th><th>Assertion</th><th>Summary</th><th>Parties</th></tr></thead>
@@ -117,7 +150,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
 
       {connections.length > 0 ? (
         <section className="sheet">
-          <div className="sheet-head"><span className="num">E.</span><h2>Connections</h2></div>
+          <div className="sheet-head"><span className="num">F.</span><h2>Connections</h2></div>
           {connections.map((c) => (
             <article className="record" key={c.id}>
               <div className="rec-top">

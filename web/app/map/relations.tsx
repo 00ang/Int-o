@@ -16,6 +16,11 @@ interface Evidence {
   summary: string; occurredAt: string; type: string;
   itemId: string; itemTitle: string; source: string;
 }
+interface Bio {
+  summary: string;
+  affiliations: Array<{ organisation: string; role: string; period: string; basis: string }>;
+  capabilities: Array<{ capability: string }>;
+}
 interface Link {
   id: string; name: string; kind: string; slug: string;
   weight: number; eventCount: number; evidence: Evidence[];
@@ -23,6 +28,7 @@ interface Link {
 
 export default function Relations({ party }: { party: GraphNode | null }) {
   const [links, setLinks] = useState<Link[] | null>(null);
+  const [bio, setBio] = useState<Bio | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [msg, setMsg] = useState('');
 
@@ -36,6 +42,7 @@ export default function Relations({ party }: { party: GraphNode | null }) {
         if (!r.ok) throw new Error(body.error ?? `Request failed (${r.status})`);
         if (!live) return;
         setLinks(body.links);
+        setBio(body.bio ?? null);
         setState('ready');
       })
       .catch((e) => {
@@ -60,7 +67,33 @@ export default function Relations({ party }: { party: GraphNode | null }) {
         event listed was inferred from a shared document or storyline rather than from one record
         naming both &mdash; weaker, and said so.
       </p>
-      <p style={{ margin: '0 0 16px' }}>
+      {/* Who they are, before what they are wired to. A link between two names
+          means little; a link between two known positions means more. */}
+      {bio && (
+        <div className="formfield" style={{ borderTop: '2px solid var(--rule)' }}>
+          <span className="fnum">W.</span>
+          <div className="fbody">
+            <span className="flabel">Who they are</span>
+            <p style={{ margin: '0 0 8px', lineHeight: 1.55 }}>{bio.summary}</p>
+            {bio.affiliations.slice(0, 4).map((a, i) => (
+              <p className="assess" key={i} style={{ marginBottom: 4 }}>
+                <b>{a.organisation}</b>{a.role} &mdash; {a.period}
+                {a.basis === 'recalled' && (
+                  <span style={{ color: 'var(--stamp)' }}> (unverified)</span>
+                )}
+              </p>
+            ))}
+            {bio.capabilities.length > 0 && (
+              <p className="hilite" style={{ marginTop: 8 }}>
+                <b>Positioned to</b>
+                <span>{bio.capabilities.map((c) => c.capability).join('; ')}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <p style={{ margin: '14px 0 16px' }}>
         <a href={`/entity/${encodeURIComponent(party.slug)}`}>
           Open {party.name}&rsquo;s full record &rarr;
         </a>
