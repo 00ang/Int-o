@@ -261,3 +261,80 @@ export const ProfileSchema = z.object({
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Affiliation = z.infer<typeof AffiliationSchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;
+
+/**
+ * The background track.
+ *
+ * Read independently of the records that connect anything. This track sees who
+ * the parties are - their affiliations, prior episodes and capabilities - and
+ * the subject of the story, and nothing else. It never sees the chains of
+ * events the evidence track is judging.
+ *
+ * That separation is the whole point. A model shown records and background
+ * together finds what the background primed it to find, and its agreement with
+ * itself proves nothing. Kept apart, the two tracks can converge on a party for
+ * different reasons, and that convergence is a real signal rather than an echo.
+ */
+export const BackgroundLeadSchema = z.object({
+  party: z.string().describe('The party, copied exactly from the dossiers supplied.'),
+  expectation: z.string()
+    .describe('What this party\'s background and position would lead you to expect around this subject. Specific to them, never generic.'),
+  whyTheirBackground: z.string()
+    .describe('The affiliation, prior episode or capability this rests on. Name it.'),
+  whatWouldConfirm: z.string().describe('A record or observation that would establish it.'),
+  falsifier: z.string().describe('A specific observation that would show it is wrong. Mandatory.'),
+  /**
+   * Capped below the evidence track. Background is mostly recalled and
+   * unverified, so a reading built on it must never outrank one built on
+   * records this corpus actually holds.
+   */
+  confidence: z.number().min(0.01).max(0.55),
+});
+
+export const BackgroundSynthesisSchema = z.object({
+  leads: z.array(BackgroundLeadSchema)
+    .describe('Zero or more. Empty is correct when the dossiers say nothing bearing on this subject.'),
+  surprises: z.array(z.string())
+    .describe('Things about this subject that the parties\' backgrounds make unexpected, and which therefore need explaining.'),
+  dismissed: z.string().describe('One sentence on what you considered and set aside.'),
+});
+
+/**
+ * The reconciliation.
+ *
+ * Sees only the two tracks' conclusions, never their inputs, so it cannot
+ * re-litigate either read - it can only compare them. Convergence is what it
+ * exists to find: a party both tracks reached independently, on different
+ * grounds, is the strongest thing this system can produce.
+ */
+export const ReconciledFindingSchema = z.object({
+  party: z.string(),
+  standing: z.enum([
+    /** Both tracks reached it independently. The strongest available result. */
+    'corroborated',
+    /** Records support it; background adds nothing either way. */
+    'records-only',
+    /** Background suggests it; no record here supports it yet. Weakest. */
+    'background-only',
+    /** The tracks disagree, and the disagreement is itself worth knowing. */
+    'contested',
+  ]),
+  finding: z.string().describe('What the combined read actually says, in one or two sentences.'),
+  restsOn: z.string().describe('What it rests on, naming which track supplied what.'),
+  nextCheck: z.string().describe('The single most useful thing a person could go and look at.'),
+  falsifier: z.string().describe('What would show it is wrong. Mandatory.'),
+  confidence: z.number().min(0.01).max(0.7)
+    .describe('Never above 0.7. A corroborated finding may approach it; a background-only one must stay low.'),
+});
+
+export const ReconciliationSchema = z.object({
+  findings: z.array(ReconciledFindingSchema)
+    .describe('Ranked, most useful first. Empty when neither track produced anything worth carrying forward.'),
+  assessment: z.string()
+    .describe('Two or three sentences: what a person should take away, including if the answer is that there is nothing here.'),
+});
+
+export type BackgroundLead = z.infer<typeof BackgroundLeadSchema>;
+export type BackgroundSynthesis = z.infer<typeof BackgroundSynthesisSchema>;
+export type ReconciledFinding = z.infer<typeof ReconciledFindingSchema>;
+export type Reconciliation = z.infer<typeof ReconciliationSchema>;

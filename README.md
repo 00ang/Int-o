@@ -81,6 +81,7 @@ loop, all against recorded fixtures.
 | `graph:build` | Wire the association map from the events on file | no |
 | `activate <id> [-H hops]` | Fire the map from one item and see what lights up | no |
 | `synthesize <id>` | Fire the map, then judge the chains that lit | **yes** |
+| `assess <id>` | Both tracks - records and background - then reconcile | **yes**, 3 calls |
 | `bodies [-l n]` | Fetch full article text for retained items | no |
 | `triage [-l n]` | Judge what deserves attention | **yes**, cheaply |
 | `queue [--notable] [--angles]` | The reading list: what survived triage | no |
@@ -157,6 +158,43 @@ question someone can go and check, rather than an accusation.
 A dossier on a party the model does not reliably know comes back `thin` and
 nearly empty. A padded dossier is worse than none, because everything
 downstream treats it as knowledge.
+
+## Two tracks, then a reconciliation
+
+`assess <item>` is the full read, and its shape is the point.
+
+**The evidence track** reads the records: chains of events connecting this story
+to parties it never names, and judges which chains are a mechanism rather than
+coincidence. It sees no dossiers.
+
+**The background track** reads the parties: their affiliations, prior episodes
+and capabilities, and what their position would lead you to expect around this
+subject. It sees no connecting records at all.
+
+They run concurrently and neither can see the other's material. That separation
+is the design. A model handed records and background together finds what the
+background primed it to find, and its agreement with itself proves nothing. Kept
+apart, the two tracks can reach the same party for different reasons - and
+*that* convergence is the strongest thing this system can produce.
+
+**The reconciliation** sees only the two conclusions, never their inputs, so it
+cannot re-argue either read. It can only compare them, and assign standing:
+
+| standing | meaning |
+|---|---|
+| `corroborated` | both tracks reached it independently, on different grounds. Ranked first. |
+| `records-only` | the records support it; background neither helps nor hurts. |
+| `background-only` | background suggests it; nothing in the corpus supports it yet. Weakest, and labelled as such. |
+| `contested` | the tracks point different ways. Not resolved by picking one - the disagreement is the finding. |
+
+Confidence is bounded by construction. A background lead caps at 0.55, below
+anything built on records this corpus holds, because background is mostly
+recalled and unverified. A reconciled finding caps at 0.7, like every other
+model proposal here. Empty findings is a correct and common outcome, and the
+assessment is expected to say "there is nothing here" when that is true.
+
+Three model calls where the single-track `synthesize` made one. That is the
+price of cross-checking rather than confirming.
 
 ## The association map
 

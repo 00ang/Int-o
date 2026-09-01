@@ -22,6 +22,7 @@ import { buildGraph, graphStats } from '../core/graph.js';
 import { buildProfiles, getProfile } from '../pipeline/profile.js';
 import { activateFromItem } from '../pipeline/activate.js';
 import { synthesize } from '../pipeline/synthesize.js';
+import { reconcile } from '../pipeline/reconcile.js';
 import { fetchBodies } from '../pipeline/bodies.js';
 import { ptrFilings } from '../core/store.js';
 import type { TradeRecord } from '../pipeline/import-trades.js';
@@ -426,6 +427,49 @@ program
     if (r.hubsHeld.length > 0) {
       console.log(`\nHeld at hubs (received but did not relay): ${r.hubsHeld.slice(0, 5).join(', ')}`);
     }
+  });
+
+program
+  .command('assess <id>')
+  .description('Read an item down both tracks - records and background - then reconcile (uses the API, 3 calls)')
+  .option('-H, --hops <n>', 'how far energy travels', Number, 3)
+  .option('-c, --candidates <n>', 'how many lit parties the evidence track reviews', Number, 12)
+  .action(async (id, o) => {
+    const r = await reconcile(db(), cfg, id, { hops: o.hops, maxCandidates: o.candidates });
+    console.log(
+      `Seeded from ${r.activation.seeds.length} parties, ${r.activation.distant.length} lit indirectly, ` +
+      `${r.dossiersUsed.length} dossiers available.\n`,
+    );
+    if (r.skipped) { console.log(r.skipped); return; }
+
+    console.log('EVIDENCE TRACK (read the records)');
+    if (r.evidence.leads.length === 0) console.log('  no leads - every chain reviewed was coincidence');
+    for (const l of r.evidence.leads) {
+      console.log(`  [${l.confidence.toFixed(2)}] ${l.party}: ${l.mechanism}`);
+    }
+
+    console.log('\nBACKGROUND TRACK (read the dossiers, blind to the records)');
+    if (!r.background || r.background.leads.length === 0) {
+      console.log('  no leads - the dossiers say nothing bearing on this subject');
+    }
+    for (const l of r.background?.leads ?? []) {
+      console.log(`  [${l.confidence.toFixed(2)}] ${l.party}: ${l.expectation}`);
+      console.log(`        rests on: ${l.whyTheirBackground}`);
+    }
+    for (const s of r.background?.surprises ?? []) console.log(`  unexpected: ${s}`);
+
+    console.log('\nRECONCILED');
+    if (!r.reconciled || r.reconciled.findings.length === 0) {
+      console.log('  nothing carried forward from either track');
+    }
+    for (const f of r.reconciled?.findings ?? []) {
+      console.log(`\n  [${f.standing}] ${f.party}  confidence ${f.confidence.toFixed(2)}`);
+      console.log(`    ${f.finding}`);
+      console.log(`    rests on:   ${f.restsOn}`);
+      console.log(`    next check: ${f.nextCheck}`);
+      console.log(`    falsifier:  ${f.falsifier}`);
+    }
+    if (r.reconciled?.assessment) console.log(`\n${r.reconciled.assessment}`);
   });
 
 program
