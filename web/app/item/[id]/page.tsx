@@ -82,8 +82,10 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           rather than from a record here.
         </p>
         {dossiers.length === 0 ? (
-          <p className="empty">
-            No dossiers for these parties yet &mdash; run all-int profile
+          <p className="instruction" style={{ borderBottom: 'none', paddingBottom: 0 }}>
+            No dossiers for these parties yet. Write them by running{' '}
+            <code>all-int profile</code> in a terminal &mdash; it works from any directory and
+            loads the project&rsquo;s settings itself.
           </p>
         ) : dossiers.map((d) => (
           <div key={d.entityId} style={{ borderTop: '2px solid var(--rule)', paddingTop: 14, marginTop: 14 }}>

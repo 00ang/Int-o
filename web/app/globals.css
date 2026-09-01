@@ -279,3 +279,10 @@ footer p{font-size:var(--s--1);color:var(--toner-3);margin:0;line-height:1.65}
 }
 .digdeeper:hover{background:var(--stamp);color:var(--stock-lit)}
 .digdeeper:focus-visible{outline:2px solid var(--toner);outline-offset:2px}
+
+/* A command the reader is meant to type. Set apart from prose so it reads as
+   something to copy rather than something to read past. */
+code{
+  font-family:var(--mono);font-size:0.95em;background:var(--hi);
+  padding:1px 5px;border:1px solid var(--toner);white-space:nowrap;
+}

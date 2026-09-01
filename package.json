@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "bin": {
-    "all-int": "./dist/cli/index.js"
+    "all-int": "./bin/all-int"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

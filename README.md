@@ -35,16 +35,22 @@ construction](#honest-by-construction).
 ```bash
 npm install
 npm run build
+npm link          # makes `all-int` available anywhere
 
-export ALLINT_DB=./data/allint.db
-export ALLINT_CONTACT_EMAIL=you@example.com   # required by SEC and others
-export ANTHROPIC_API_KEY=sk-ant-...                # extraction, threads, brief
+cp .env.example .env    # then fill in ANTHROPIC_API_KEY, or set
+                        # ALLINT_LLM_PROVIDER=claude-cli to use a subscription
 
-npx tsx src/cli/index.ts demo      # see it work: no key, no network
-npx tsx src/cli/index.ts init      # create the DB, load 79 sources
-npx tsx src/cli/index.ts sources:check --fix   # ← do this first, see below
-npx tsx src/cli/index.ts run       # ingest → triage → extract → link → thread → brief
+all-int demo      # see it work: no key, no network
+all-int init      # create the DB, load the source registry
+all-int sources:check --fix   # confirm which feeds answer - do this first
+all-int run       # ingest -> triage -> extract -> link -> thread -> brief
 ```
+
+The `all-int` wrapper loads `.env` itself and resolves the project from its own
+location, so it works from any directory. That matters more than it sounds: the
+CLI reads `process.env` directly and carries no dotenv, so invoking it without
+the wrapper runs with no API key and writes to whatever `./data/allint.db`
+resolves to from wherever you were standing.
 
 `demo` seeds a synthetic corpus and runs the detectors. It needs nothing and
 proves the engine works in about a second.

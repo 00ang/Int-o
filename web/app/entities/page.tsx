@@ -14,7 +14,7 @@ export default async function Entities() {
         A party without a dossier is a name with no history, and an event involving one cannot be
         read as ordinary or unusual. <b>{cov.written} of {cov.parties} have one.</b>
       </p>
-      {rows.length === 0 ? <p className="empty">No parties resolved yet. Run extract.</p> : (
+      {rows.length === 0 ? <p className="empty">No parties resolved yet. Run all-int extract.</p> : (
         <div className="tscroll">
           <table>
             <thead><tr><th>Party</th><th>Kind</th><th className="n">Events</th><th>Dossier</th></tr></thead>

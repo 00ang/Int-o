@@ -33,8 +33,7 @@ export default async function EntityPage({ params }: { params: Promise<{ slug: s
           <p className="instruction" style={{ borderBottom: 'none' }}>
             No dossier written yet. Without one this party is a name with {ent.events} event
             {ent.events === 1 ? '' : 's'} attached and no history, so nothing here can say whether
-            those events are ordinary for them or not. Write one with{' '}
-            <b>all-int profile</b>.
+            those events are ordinary for them or not. Write one by running <code>all-int profile</code> in a terminal.
           </p>
         )}
       </section>

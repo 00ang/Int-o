@@ -1,0 +1,49 @@
+#!/bin/sh
+# The all-int command.
+#
+# Two things this wrapper exists to do, both of which were footguns without it.
+#
+# It loads .env. The CLI reads process.env directly and has no dotenv, so every
+# invocation without this either ran with no API key or silently used defaults -
+# including writing to the wrong database. Shipping a .env.example while
+# requiring the caller to export it by hand was a trap.
+#
+# And it works from any directory. The repo root is resolved from this script's
+# own location, so the database path in .env stays correct no matter where you
+# happen to be standing.
+set -u
+
+# Follow symlinks to find the real script, because `npm link` installs this as
+# a symlink in a bin directory - and resolving $0 naively then points at that
+# directory's parent rather than at the repo, so .env and the database are never
+# found. Done by hand because readlink -f is not portable to macOS.
+SELF=$0
+while [ -L "$SELF" ]; do
+  LINK=$(readlink "$SELF")
+  case $LINK in
+    /*) SELF=$LINK ;;
+    *)  SELF=$(dirname -- "$SELF")/$LINK ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
+cd "$ROOT" || exit 1
+
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
+# The subscription backend refuses to use a claude.ai login while an API key is
+# present, so the key is dropped when that backend is selected.
+if [ "${ALLINT_LLM_PROVIDER:-anthropic}" = "claude-cli" ]; then
+  unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_WORKSPACE_ID ANTHROPIC_BASE_URL
+fi
+
+# Prefer the build; fall back to running the sources so a fresh clone works
+# before anyone has run npm run build.
+if [ -f dist/cli/index.js ]; then
+  exec node dist/cli/index.js "$@"
+fi
+exec npx tsx src/cli/index.ts "$@"
