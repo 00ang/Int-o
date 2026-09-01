@@ -145,6 +145,19 @@ export function saveProfile(db: DB, entityId: string, p: Profile, model: string)
 }
 
 /**
+ * Kinds a dossier can say something useful about.
+ *
+ * Countries and places are excluded for the same reason the map will not relay
+ * energy through them: they are containers, not parties. A dossier on "the
+ * United States" can only be generic, and generic background does not help read
+ * an event - it just costs a call and fills a page. The same goes for a party
+ * the source declined to name, which has no identity to have a history.
+ */
+export const PROFILABLE_KINDS = [
+  'person', 'company', 'organization', 'government-body', 'policy',
+];
+
+/**
  * Parties worth a dossier, most consequential first.
  *
  * Ordered by how much of the corpus runs through them, because a dossier is
@@ -155,7 +168,15 @@ export function entitiesNeedingProfile(
   db: DB,
   opts: { limit?: number; minEvents?: number; rebuild?: boolean } = {},
 ): Array<{ id: string; name: string; events: number }> {
-  const where = ['ee.entity_id IS NOT NULL'];
+  const where = [
+    'ee.entity_id IS NOT NULL',
+    `en.kind IN (${PROFILABLE_KINDS.map((k) => `'${k}'`).join(',')})`,
+    // "an unnamed private company" is a real thing to have recorded and not a
+    // party that can have a past.
+    "en.name NOT LIKE '%unnamed%'",
+    "en.name NOT LIKE '%unidentified%'",
+    "en.name NOT LIKE '%undisclosed%'",
+  ];
   if (!opts.rebuild) where.push('p.entity_id IS NULL');
   return db.prepare(`
     SELECT en.id, en.name, COUNT(DISTINCT ee.event_id) AS events
