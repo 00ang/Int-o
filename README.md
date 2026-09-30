@@ -62,8 +62,11 @@ reading queue with angles, insider trades, congressional trades, lobbying with
 a former Senate staffer among the lobbyists, new contracts, and the thirteen
 connections the detectors find between them - so there is something to click
 through before you have ingested anything. Every name in it is fictional.
-Without `--demo` it opens your own database. After pulling changes, run
-`npm run build` first: the app and the command both run from the build.
+Without `--demo` it opens your own database.
+
+The `all-int` command runs from the build and rebuilds it first whenever the
+code is newer, so after a pull or a branch switch the new commands are there
+without a manual `npm run build`.
 
 ### Read this before trusting the source list
 

@@ -41,9 +41,25 @@ if [ "${ALLINT_LLM_PROVIDER:-anthropic}" = "claude-cli" ]; then
   unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_WORKSPACE_ID ANTHROPIC_BASE_URL
 fi
 
-# Prefer the build; fall back to running the sources so a fresh clone works
-# before anyone has run npm run build.
-if [ -f dist/cli/index.js ]; then
-  exec node dist/cli/index.js "$@"
+# Run the build, and keep it current. A build older than the sources is the
+# previous version of the program: after a pull or a branch switch it answers
+# "unknown command" to anything new, and the web app, which imports the build,
+# runs the old engine. So a missing or stale build is rebuilt first - once, a
+# few seconds - and only if that fails do we fall back to running the sources.
+TSC=node_modules/typescript/bin/tsc
+if [ ! -f dist/cli/index.js ] || [ -n "$(find src -name '*.ts' -newer dist/cli/index.js 2>/dev/null | head -n 1)" ]; then
+  if [ -f "$TSC" ]; then
+    echo "all-int: the code changed since the last build; rebuilding (a few seconds)..." >&2
+    if node "$TSC" -p tsconfig.json >&2; then
+      # Mark the build current even if the compiler left this file untouched.
+      touch dist/cli/index.js
+    else
+      echo "all-int: the build failed; running from source instead." >&2
+      exec npx tsx src/cli/index.ts "$@"
+    fi
+  else
+    echo "all-int: packages are not installed. Run: npm install   (in $ROOT)" >&2
+    exit 1
+  fi
 fi
-exec npx tsx src/cli/index.ts "$@"
+exec node dist/cli/index.js "$@"
