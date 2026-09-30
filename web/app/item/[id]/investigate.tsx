@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 /**
@@ -21,6 +22,7 @@ export default function InvestigateButton({ id, hasEvents }: { id: string; hasEv
   const [msg, setMsg] = useState('');
   const [res, setRes] = useState<Result | null>(null);
   const [hypotheses, setHypotheses] = useState(false);
+  const router = useRouter();
 
   async function run() {
     setState('running');
@@ -35,6 +37,9 @@ export default function InvestigateButton({ id, hasEvents }: { id: string; hasEv
       if (!r.ok) throw new Error(body.error ?? `Request failed (${r.status})`);
       setRes(body);
       setState('done');
+      // Re-render the server half of the page, so the events, connections and
+      // the copyable card include what this investigation just found.
+      router.refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
       setState('error');

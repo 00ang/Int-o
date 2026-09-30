@@ -4,6 +4,9 @@ import InvestigateButton from './investigate';
 import Circled from '../../circled';
 import Network from './network';
 import DossierPanel from '../../dossier-panel';
+import CopyCard from './copy-card';
+import { db } from '../../../lib/db';
+import { buildCard } from '../../../../dist/pipeline/card.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +18,8 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const events = eventsForItem(id);
   const connections = connectionsForItem(id);
   const dossiers = dossiersForItem(id);
+  // Read-only, from what is on file: making a card never spends anything.
+  const card = buildCard(db(), id);
 
   return (
     <>
@@ -65,6 +70,16 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             <p style={{ margin: 0, lineHeight: 1.55 }}>{it.reason}</p>
           </div>
         </div>
+
+        {card ? (
+          <div className="formfield">
+            <span className="fnum">43.</span>
+            <div className="fbody">
+              <span className="flabel">For the group chat</span>
+              <CopyCard text={card} />
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="sheet">

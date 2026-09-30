@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { cliEnv, extractJson } from '../src/core/llm-cli.js';
+import { cliArgs, cliEnv, extractJson, readEnvelope } from '../src/core/llm-cli.js';
+import { supportsFallback } from '../src/core/llm.js';
 import { isTransient } from '../src/pipeline/extract.js';
 
 describe('recovering JSON from CLI output', () => {
@@ -108,5 +109,71 @@ describe('the environment the CLI runs in', () => {
     const base = { ANTHROPIC_API_KEY: 'sk-ant-x', PATH: '/usr/bin' };
     cliEnv(base);
     expect(base.ANTHROPIC_API_KEY).toBe('sk-ant-x');
+  });
+});
+
+describe('a bare model call through the CLI', () => {
+  // Every one of these turns off something the CLI loads by default and a
+  // schema fill has no use for. Measured, the defaults were ~29k tokens of
+  // context per call; with these, under a thousand.
+  const args = cliArgs({ system: 'SYS', model: 'haiku', effort: 'medium', schemaJson: '{}' });
+
+  it('replaces the coding-agent system prompt with ours', () => {
+    expect(args[args.indexOf('--system-prompt') + 1]).toBe('SYS');
+  });
+
+  it('loads no tools, MCP servers or skills, and saves no session', () => {
+    expect(args[args.indexOf('--tools') + 1]).toBe('');
+    expect(args).toContain('--strict-mcp-config');
+    expect(args).toContain('--disable-slash-commands');
+    expect(args).toContain('--no-session-persistence');
+  });
+
+  it('asks for the JSON envelope, the schema and the effort the API path uses', () => {
+    expect(args[args.indexOf('--output-format') + 1]).toBe('json');
+    expect(args[args.indexOf('--json-schema') + 1]).toBe('{}');
+    expect(args[args.indexOf('--effort') + 1]).toBe('medium');
+  });
+
+  it('omits effort where the model takes none, and the schema for prose', () => {
+    const bare = cliArgs({ system: 'SYS', model: 'haiku', effort: null });
+    expect(bare).not.toContain('--effort');
+    expect(bare).not.toContain('--json-schema');
+  });
+});
+
+describe('reading the CLI envelope', () => {
+  it('returns the constrained object', () => {
+    const env = readEnvelope(JSON.stringify({ is_error: false, result: '{"a":1}', structured_output: { a: 1 } }));
+    expect(env.structured_output).toEqual({ a: 1 });
+  });
+
+  it('turns a limit notice in the envelope into a transient error', () => {
+    const raw = JSON.stringify({ is_error: true, result: "You've hit your session limit · resets 1am" });
+    expect(() => readEnvelope(raw)).toThrow(/rate limit/);
+    try { readEnvelope(raw); } catch (e) { expect(isTransient((e as Error).message)).toBe(true); }
+  });
+
+  it('turns a bare limit notice, with no envelope at all, into the same', () => {
+    expect(() => readEnvelope("You've hit your usage limit")).toThrow(/rate limit/);
+  });
+
+  it('reports any other CLI error as a failed run, which does not retire the item', () => {
+    try {
+      readEnvelope(JSON.stringify({ is_error: true, result: 'something broke' }));
+      expect.unreachable();
+    } catch (e) {
+      expect(isTransient((e as Error).message)).toBe(true);
+    }
+  });
+});
+
+describe('refusal fallback', () => {
+  it('is requested for the large models and not for Haiku', () => {
+    expect(supportsFallback('claude-opus-5-5')).toBe(true);
+    expect(supportsFallback('claude-sonnet-5-5')).toBe(true);
+    expect(supportsFallback('claude-fable-5-1')).toBe(true);
+    expect(supportsFallback('claude-haiku-4-5-20251001')).toBe(false);
+    expect(supportsFallback('claude-sonnet-4-6')).toBe(false);
   });
 });

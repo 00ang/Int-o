@@ -109,6 +109,8 @@ export async function extractItem(db: DB, cfg: Config, item: Item): Promise<Extr
       schema: ExtractionSchema,
       effort: 'medium',
       maxTokens: 8_000,
+      model: cfg.extractModel,
+      cliModel: cfg.cliExtractModel,
     });
 
     const tx = db.transaction(() => {

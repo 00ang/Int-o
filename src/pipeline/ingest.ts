@@ -9,6 +9,7 @@ import { fetchRss } from '../sources/rss.js';
 import { fetchEdgar } from '../sources/sec-edgar.js';
 import { fetchStockAct } from '../sources/stock-act.js';
 import { fetchAwards } from '../sources/usaspending.js';
+import { writeRecordEvents } from './records.js';
 
 /** Load the shipped registry into the database, preserving enable/verify state. */
 export function seedSources(db: DB): number {
@@ -47,6 +48,8 @@ export interface IngestResult {
   sourceId: string;
   fetched: number;
   inserted: number;
+  /** Events written in code from structured rows, with no model call. */
+  events: number;
   error: string | null;
 }
 
@@ -75,16 +78,20 @@ export async function ingest(
 
   const results: IngestResult[] = [];
   for (const source of due) {
-    const result: IngestResult = { sourceId: source.id, fetched: 0, inserted: 0, error: null };
+    const result: IngestResult = {
+      sourceId: source.id, fetched: 0, inserted: 0, events: 0, error: null,
+    };
     try {
       const items = await fetchSource(source, cfg);
       result.fetched = items.length;
       const tx = db.transaction((batch: Item[]) => {
-        let n = 0;
-        for (const it of batch) if (insertItem(db, it)) n++;
-        return n;
+        for (const it of batch) {
+          if (!insertItem(db, it)) continue;
+          result.inserted++;
+          result.events += writeRecordEvents(db, it, source.kind);
+        }
       });
-      result.inserted = tx(items);
+      tx(items);
       recordFetch(db, source.id, null);
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);

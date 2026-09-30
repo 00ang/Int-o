@@ -562,10 +562,42 @@ export function shouldResolveIssuer(t: TradeRecord): boolean {
   return t.assetType !== null && SECURITY_ASSET_TYPE.test(t.assetType);
 }
 
-/** Issuer name without the ticker parenthetical some datasets append. */
+/**
+ * The class of security, as filers append it to the company: "Applied
+ * Materials, Inc. - Common Stock", "Alphabet Inc. Class A", "Shell plc ADR".
+ * It describes the instrument, not the issuer, and left on the name it made a
+ * company that a filing traded and a press story named into two parties - so
+ * the trade never joined to anything.
+ */
+const SECURITY_CLASS = new RegExp(
+  // Whitespace or a separator must come first, so "iShares" keeps its name.
+  '(?:^|\\s+|\\s*[-,]\\s*)(?:' + [
+    '(?:class [a-z]\\s+)?(?:common|ordinary|preferred|capital) (?:stock|shares)',
+    '(?:sponsored |unsponsored )?(?:adr|ads|american depositary (?:shares|receipts?))',
+    'class [a-z]',
+    'common',
+    'units?',
+  ].join('|') + ')\\s*$',
+  'i',
+);
+
+/**
+ * A company name without the asset-type code, ticker parenthetical or class of
+ * security that disclosures append to it.
+ */
+export function stripSecurityClass(raw: string): string {
+  let name = raw.replace(/\s*\[[A-Z]{2}\]\s*$/, '')
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Twice, for "Class A Common Stock" written as two trailing clauses.
+  for (let i = 0; i < 2; i++) name = name.replace(SECURITY_CLASS, '').trim();
+  return name;
+}
+
+/** Issuer name without the ticker parenthetical or the class of security. */
 export function issuerName(t: TradeRecord): string {
-  const name = t.assetName?.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
-  return name || t.ticker || '';
+  return (t.assetName ? stripSecurityClass(t.assetName) : '') || t.ticker || '';
 }
 
 export function tradeToItem(t: TradeRecord, source: Source, fetchedAt = new Date().toISOString()): Item {

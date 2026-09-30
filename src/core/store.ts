@@ -4,11 +4,19 @@ import {
   rowToSource, rowToThread,
 } from './db.js';
 import { slugifyEntity, stableId } from './ids.js';
+import { STRUCTURED_SOURCE_KINDS } from './types.js';
 import type {
   Brief, Connection, Entity, EntityKind, Event, EventEntity, Forecast, Item, Source, Thread,
 } from './types.js';
 
 const nowIso = () => new Date().toISOString();
+
+/**
+ * Structured-record source kinds as an SQL list. Constants, not user input, so
+ * inlining them is safe - and it keeps the model queues from ever picking up a
+ * dataset row, including rows written before insert kept their triage state.
+ */
+const STRUCTURED_KINDS_SQL = STRUCTURED_SOURCE_KINDS.map((k) => `'${k}'`).join(', ');
 
 // ---------------------------------------------------------------------------
 // Sources
@@ -82,13 +90,26 @@ export function recordFetch(db: DB, sourceId: string, error: string | null): voi
 export function insertItem(db: DB, item: Item): boolean {
   const res = db
     .prepare(
+      // The triage columns are written here too. A structured record arrives
+      // already judged, and dropping that on insert is what sent every imported
+      // trade and market snapshot through a model call it was built to skip.
       `INSERT OR IGNORE INTO items
          (id, source_id, external_id, url, title, summary, body, author,
-          published_at, fetched_at, raw, extracted_at, extraction_error)
+          published_at, fetched_at, raw, extracted_at, extraction_error,
+          triaged_at, triage_verdict, triage_topic, triage_reason, triage_angle)
        VALUES (@id, @sourceId, @externalId, @url, @title, @summary, @body, @author,
-               @publishedAt, @fetchedAt, @raw, @extractedAt, @extractionError)`,
+               @publishedAt, @fetchedAt, @raw, @extractedAt, @extractionError,
+               @triagedAt, @triageVerdict, @triageTopic, @triageReason, @triageAngle)`,
     )
-    .run({ ...item, raw: item.raw ? JSON.stringify(item.raw) : null });
+    .run({
+      ...item,
+      raw: item.raw ? JSON.stringify(item.raw) : null,
+      triagedAt: item.triagedAt ?? null,
+      triageVerdict: item.triageVerdict ?? null,
+      triageTopic: item.triageTopic ?? null,
+      triageReason: item.triageReason ?? null,
+      triageAngle: item.triageAngle ?? null,
+    });
   return res.changes > 0;
 }
 
@@ -144,6 +165,7 @@ export function itemsAwaitingTriage(db: DB, limit: number): Item[] {
     .prepare(
       `SELECT * FROM items
         WHERE triaged_at IS NULL
+          AND source_id NOT IN (SELECT id FROM sources WHERE kind IN (${STRUCTURED_KINDS_SQL}))
         ORDER BY published_at DESC
         LIMIT ?`,
     )
@@ -213,6 +235,7 @@ export function itemsAwaitingExtraction(db: DB, limit: number): Item[] {
       `SELECT * FROM items
         WHERE extracted_at IS NULL AND extraction_error IS NULL
           AND triage_verdict IS NOT NULL AND triage_verdict != 'mundane'
+          AND source_id NOT IN (SELECT id FROM sources WHERE kind IN (${STRUCTURED_KINDS_SQL}))
         ORDER BY CASE triage_verdict WHEN 'notable' THEN 2 WHEN 'worth-a-look' THEN 1 ELSE 0 END DESC,
                  published_at DESC
         LIMIT ?`,
@@ -250,10 +273,14 @@ export function searchItems(db: DB, query: string, limit = 25): Item[] {
 // Entities
 // ---------------------------------------------------------------------------
 
+/** A name written entirely in capitals, as registries and filings do. */
+export const isShouting = (name: string): boolean => /[A-Z]/.test(name) && name === name.toUpperCase();
+
 /**
  * Resolve a surface form to a canonical entity, creating one if needed.
  *
- * Matching is by (slug, kind). Ticker and CIK are merged in opportunistically:
+ * Matching is by (slug, kind), then by ticker within the kind. Ticker and CIK
+ * are merged in opportunistically:
  * a press mention that arrives with no ticker will later gain one from an SEC
  * filing, and that is what lets coverage of "Lockheed" join to a Form 4.
  */
@@ -273,17 +300,34 @@ export function resolveEntity(
   const slug = slugifyEntity(input.name);
   const seenAt = input.seenAt ?? nowIso();
   const id = stableId('ent', input.kind, slug);
+  const ticker = input.ticker?.trim().toUpperCase() || null;
 
-  const existing = db.prepare('SELECT * FROM entities WHERE slug = ? AND kind = ?')
-    .get(slug, input.kind) as Record<string, any> | undefined;
+  // A ticker is a better identity than a spelling: "NVIDIA Corporation" in a
+  // disclosure and "Nvidia" in a wire story are one issuer, and only the ticker
+  // says so. The name match comes first so an exact spelling always wins.
+  const existing = (db.prepare('SELECT * FROM entities WHERE slug = ? AND kind = ?')
+    .get(slug, input.kind)
+    ?? (ticker
+      ? db.prepare(
+        'SELECT * FROM entities WHERE ticker = ? AND kind = ? ORDER BY mention_count DESC LIMIT 1',
+      ).get(ticker, input.kind)
+      : undefined)) as Record<string, any> | undefined;
 
   if (existing) {
     const aliases = new Set<string>(JSON.parse(existing.aliases || '[]'));
     for (const a of input.aliases ?? []) aliases.add(a);
-    if (input.name !== existing.name) aliases.add(input.name);
+    // Registries write names in capitals. When a later source spells the same
+    // party normally, show that spelling and keep the capitals as an alias.
+    // Only on a name match, so the display name never drifts from the slug.
+    const name = existing.slug === slug && isShouting(existing.name) && !isShouting(input.name)
+      ? input.name
+      : existing.name;
+    if (input.name !== name) aliases.add(input.name);
+    if (existing.name !== name) aliases.add(existing.name);
     db.prepare(
       `UPDATE entities
-          SET aliases = ?,
+          SET name = ?,
+              aliases = ?,
               ticker = COALESCE(ticker, ?),
               cik = COALESCE(cik, ?),
               country = COALESCE(country, ?),
@@ -293,8 +337,9 @@ export function resolveEntity(
               mention_count = mention_count + 1
         WHERE id = ?`,
     ).run(
+      name,
       JSON.stringify([...aliases]),
-      input.ticker ?? null, input.cik ?? null, input.country ?? null,
+      ticker, input.cik ?? null, input.country ?? null,
       input.description ?? null, seenAt, seenAt, existing.id,
     );
     return rowToEntity(
@@ -309,7 +354,7 @@ export function resolveEntity(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
   ).run(
     id, input.kind, input.name, slug, JSON.stringify(input.aliases ?? []),
-    input.ticker ?? null, input.cik ?? null, input.country ?? null,
+    ticker, input.cik ?? null, input.country ?? null,
     input.description ?? null, seenAt, seenAt,
   );
   return rowToEntity(db.prepare('SELECT * FROM entities WHERE id = ?').get(id) as any);

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import type { ZodType } from 'zod';
 import type { Config } from './config.js';
 import { proseViaCli, structuredViaCli } from './llm-cli.js';
@@ -62,27 +62,46 @@ export interface StructuredOptions {
   thinking?: boolean;
 }
 
+/**
+ * Server-side refusal fallback.
+ *
+ * The current large models decline some requests by policy, and a corpus of
+ * sanctions, indictments and military actions will trip that occasionally. A
+ * decline would otherwise retire the item it was reading; with this the API
+ * re-runs the same request on its default substitute inside the same call.
+ * Haiku is left out: it is not a model the fallback chain is defined for.
+ */
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+export const supportsFallback = (model: string): boolean =>
+  /^claude-(opus-5|fable-5|sonnet-5-5)/.test(model);
+
+const fallbackParams = (model: string) =>
+  supportsFallback(model) ? { betas: [FALLBACK_BETA], fallbacks: 'default' as const } : {};
+
 export async function structured<T>(cfg: Config, opts: StructuredOptions): Promise<T> {
   // The CLI backend runs the same models through a subscription rather than a
-  // credit balance. It validates against this same schema after the fact, so
-  // the contract at this boundary is identical either way.
+  // credit balance. It enforces and re-validates this same schema, so the
+  // contract at this boundary is identical either way.
   if (cfg.llmProvider === 'claude-cli') {
     return structuredViaCli<T>({
       system: opts.system,
       user: opts.user,
       schema: opts.schema,
       model: opts.cliModel ?? cfg.cliModel,
+      effort: opts.effort === null ? null : (opts.effort ?? 'medium'),
     });
   }
   const anthropic = getClient(cfg);
+  const model = opts.model ?? cfg.model;
 
-  const message = await anthropic.messages.parse({
-    model: opts.model ?? cfg.model,
+  const message = await anthropic.beta.messages.parse({
+    model,
     max_tokens: opts.maxTokens ?? 16_000,
+    ...fallbackParams(model),
     ...(opts.thinking === false ? {} : { thinking: { type: 'adaptive' as const } }),
     output_config: {
       ...(opts.effort === null ? {} : { effort: opts.effort ?? 'medium' }),
-      format: zodOutputFormat(opts.schema),
+      format: betaZodOutputFormat(opts.schema),
     },
     // The instructions are identical on every call in a run, so caching them
     // turns a large repeated prefix into a cheap one.
@@ -107,19 +126,27 @@ export async function prose(
   opts: { system: string; user: string; maxTokens?: number; effort?: StructuredOptions['effort'] },
 ): Promise<string> {
   if (cfg.llmProvider === 'claude-cli') {
-    return proseViaCli({ system: opts.system, user: opts.user, model: cfg.cliModel });
+    return proseViaCli({
+      system: opts.system, user: opts.user, model: cfg.cliModel, effort: opts.effort ?? 'medium',
+    });
   }
   const anthropic = getClient(cfg);
-  const message = await anthropic.messages.create({
+  const message = await anthropic.beta.messages.create({
     model: cfg.model,
     max_tokens: opts.maxTokens ?? 16_000,
+    ...fallbackParams(cfg.model),
     thinking: { type: 'adaptive' },
     output_config: { effort: opts.effort ?? 'medium' },
     system: [{ type: 'text', text: opts.system, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: opts.user }],
   });
+  if (message.stop_reason === 'refusal') {
+    throw new Error(
+      `Model declined the request (${message.stop_details?.category ?? 'unspecified'}).`,
+    );
+  }
   return message.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
     .map((b) => b.text)
     .join('\n')
     .trim();

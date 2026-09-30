@@ -66,7 +66,7 @@ disables the rest. Run it on your own machine before your first real ingest.
 Expect a meaningful number to fail - feed URLs rot constantly, and the wire
 services in particular move theirs.
 
-Everything else in the system is verified: 162 tests cover parsing, entity
+Everything else in the system is verified: 292 tests cover parsing, entity
 resolution, the detectors, the scoring, the trade import and the forecasting
 loop, all against recorded fixtures.
 
@@ -100,6 +100,8 @@ loop, all against recorded fixtures.
 | `threads` / `thread <id>` | List / read storylines | no |
 | `connections [-b basis]` | Browse links found | no |
 | `trades [--late] [-f name]` | Browse disclosed trades and late filings | no |
+| `card <id> [-c]` | One story as plain text for a group chat (`-c` copies it) | no |
+| `entities:merge` | Merge companies the corpus split in two, rebuild the map | no |
 | `verdict <id> <sound\|coincidence\|wrong>` | Record your judgement | no |
 | `entity <name>` / `entities` | What a party has been involved in | no |
 | `search <query>` | Full-text over everything ingested | no |
@@ -133,6 +135,42 @@ article.
 
 An item whose body arrives after extraction has already run is reopened, since
 the text it was judged on has changed.
+
+## Sharing a story
+
+`all-int card <id>` prints one story as plain text, sized for a group chat:
+the angle triage flagged, what happened, the connections found with the record
+on the other end of each, and who is involved, with a line of background where
+a dossier exists. `-c` puts it on the clipboard too. On the web app, every item
+page has the same card behind a **Copy card for the group chat** button.
+
+It is read from what is already on file, so it costs nothing, and it keeps the
+labels: a model's proposal says it is a guess, background says it is
+unverified, and every link carries what would show it wrong. A connection you
+have marked `coincidence` or `wrong` with `verdict` is left off. It is plain
+text rather than markdown because most of the places it gets pasted do not
+render markdown.
+
+## Contract awards and other structured records
+
+Contract awards, imported trades and market snapshots are dataset rows, not
+articles. They skip triage and extraction entirely; a contract award becomes a
+`government-award` event in code the moment it is ingested, naming the
+awarding office as actor and the recipient as beneficiary, dated by the day it
+was signed. No model call is spent reading back fields the row already states.
+
+The award feed asks USASpending for **new awards only**. Left to its default,
+the award search returns anything with a transaction in the window, and
+sorting by amount filled every row with decades-old programmes dated by when
+their performance began - which is why every award on file was dated
+1978-2018, and why `trade-then-award` had never had both halves in one window.
+
+Companies now join across sources. A disclosed trade names the security
+("Applied Materials, Inc. - Common Stock"), a contract names the recipient in
+capitals, and a wire story names the company plainly; resolution strips the
+class of security and matches on ticker, so all three land on one party. A
+corpus built before this holds them apart: run `all-int entities:merge` once to
+merge them, then `all-int link` to re-run the detectors on the repaired parties.
 
 ## Party dossiers
 
@@ -478,12 +516,19 @@ per token. The trade is a shared rate limit: the CLI competes with your
 interactive sessions and will refuse when the API would not. Those refusals are
 transient by construction and no item is retired over one.
 
-One thing genuinely differs. The API constrains generation to the schema, so
-malformed output is impossible. The CLI returns text, so the schema becomes a
-check applied afterwards rather than a guarantee applied during - every response
-is still parsed and validated against the same Zod schema, and a response that
-fails is an error rather than a partial result. The contract at the boundary is
-identical; only where it is enforced has moved.
+Each call is a bare model call, not a Claude Code session. Left to its
+defaults, `claude -p` brings its coding-agent system prompt, every tool
+definition, your MCP servers and skills, and saves a session per call - about
+29,000 tokens of context in front of every triage batch, measured. The backend
+replaces the system prompt, turns tools, MCP servers, skills and session saving
+off, and sets effort to match the API path (the CLI's own default is higher),
+which brings the same call under a thousand tokens. That is most of the
+difference between a sweep that finishes and one that spends the afternoon
+waiting out the limit.
+
+The schema is enforced by the CLI itself (`--json-schema`), as the API does,
+and every response is validated again against the same Zod schema; a response
+that fails is an error rather than a partial result.
 
 **Local models were tried and are not good enough for the judgement stages.**
 `qwen3:4b` marked every item notable, returned lowercased headlines as topics,
@@ -498,20 +543,24 @@ a 4B or 7B model does.
 ## Cost
 
 `extract` makes one call per item; `threads:update` and `brief` make a handful
-per run. Defaults are `claude-opus-5` at medium effort, with the stable prompt
-prefix cached.
+per run. Defaults are `claude-opus-5-5` at medium effort, with the stable prompt
+prefix cached. On the large models a policy refusal is retried server-side on
+the API's default substitute, so an item about sanctions or an indictment is
+not retired because one model declined to read it.
 
-Ingesting a few hundred items a day, this is dollars per day, not cents. Both
-knobs are environment variables:
+Ingesting a few hundred items a day, this is dollars per day, not cents.
+Extraction is the bulk of it - one call per retained item - and it has its own
+model setting, so it can move to a cheaper model without taking the analysis
+stages with it:
 
 ```bash
-export ALLINT_MODEL=claude-sonnet-5   # materially cheaper per item
-export ALLINT_EXTRACT_LIMIT=40        # cap items per extraction run
+export ALLINT_EXTRACT_MODEL=claude-sonnet-5-5   # half the per-token price, extraction only
+export ALLINT_EXTRACT_LIMIT=40                  # cap items per extraction run
 ```
 
 Extraction is mechanical work over short inputs and degrades gracefully to a
-smaller model. Brief writing and hypothesis generation are where capability
-actually shows.
+smaller model. Dossiers, the two-track assessment, brief writing and hypothesis
+generation are where capability actually shows, and they stay on `ALLINT_MODEL`.
 
 ---
 
@@ -526,8 +575,11 @@ actually shows.
 | `ALLINT_TRIAGE_MODEL` | Model for triage, which reads everything | `claude-haiku-4-5-20251001` |
 | `ALLINT_TRIAGE_BATCH_SIZE` | Items judged per call | 12 |
 | `ALLINT_TRIAGE_LIMIT` | Items per triage run | 120 |
-| `ALLINT_MODEL` | Model id | `claude-opus-5` |
+| `ALLINT_MODEL` | Model id for analysis | `claude-opus-5-5` |
+| `ALLINT_EXTRACT_MODEL` | Model id for extraction | `ALLINT_MODEL` |
 | `ALLINT_EXTRACT_LIMIT` | Items per extraction run | 40 |
+| `ALLINT_LLM_PROVIDER` | `anthropic` (API credit) or `claude-cli` (subscription) | `anthropic` |
+| `ALLINT_CLI_MODEL` / `ALLINT_CLI_TRIAGE_MODEL` / `ALLINT_CLI_EXTRACT_MODEL` | Model aliases on the subscription backend | `sonnet` / `haiku` / `ALLINT_CLI_MODEL` |
 | `ALLINT_HOST_DELAY_MS` | Politeness delay per host | 400 |
 | `CONGRESS_GOV_API_KEY` | Congress.gov (free at api.data.gov) | none |
 | `COURTLISTENER_API_TOKEN` | CourtListener | none |
@@ -541,7 +593,7 @@ condition of their access policies.
 ## Status and what's next
 
 Built: the core engine, the CLI, the trade import path and the forecasting
-loop. Verified: 162 tests over parsing, entity resolution, detectors, scoring,
+loop. Verified: 292 tests over parsing, entity resolution, detectors, scoring,
 import, market matching and calibration. Unverified: the feed URLs, which need
 `sources:check --fix` on a networked machine.
 
@@ -566,14 +618,14 @@ Still open, in order:
 
 1. **Duplicate collapse.** Several outlets covering one event are judged
    independently and appear as separate sheets. Storyline work.
-2. **The award side of the detectors.** 111 trade events span 2025-26 but every
-   extracted award is 1978-2018, so `trade-then-award` has never had two halves
-   in the same window. Gating extraction on triage starves it: a routine
-   contract award reads as mundane news and is exactly the join material the
-   detectors need. Structured record feeds should bypass the news gate the way
-   market snapshots already do.
-3. **OCR for scanned filings**, or an outside dataset for that eighth.
-4. **Resolving forecasts.** Six are open; none has come due.
+2. **OCR for scanned filings**, or an outside dataset for that eighth.
+3. **Resolving forecasts.** Six are open; none has come due.
+
+Closed since: the award side of the detectors. Awards were dated by when
+decades-old programmes began and gated behind news triage, so
+`trade-then-award` never had both halves in one window; they are now new
+awards only, dated by signature, and written as events in code. See [Contract
+awards and other structured records](#contract-awards-and-other-structured-records).
 
 ---
 

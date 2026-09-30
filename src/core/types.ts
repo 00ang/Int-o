@@ -180,6 +180,15 @@ export const UNTRIAGED = {
  * Marking them at ingest keeps them out of the reading queue without spending
  * a model call to reach the conclusion we already know.
  */
+/**
+ * Source kinds whose items are dataset rows, never read by triage or
+ * extraction. Their events, where they have any, are written in code at the
+ * moment they arrive: a contract award or a disclosed trade already says who,
+ * what, when and how much, and a model reading it back out can only add cost
+ * and error.
+ */
+export const STRUCTURED_SOURCE_KINDS = ['import', 'prediction-market', 'usaspending'] as const;
+
 export const structuredRecordTriage = (at: string) => ({
   triagedAt: at,
   triageVerdict: 'mundane' as TriageVerdict,

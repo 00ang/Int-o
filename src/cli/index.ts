@@ -24,6 +24,9 @@ import { activateFromItem } from '../pipeline/activate.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { reconcile } from '../pipeline/reconcile.js';
 import { fetchBodies } from '../pipeline/bodies.js';
+import { consolidateCompanies } from '../pipeline/consolidate.js';
+import { buildCard } from '../pipeline/card.js';
+import { spawnSync } from 'node:child_process';
 import { ptrFilings } from '../core/store.js';
 import type { TradeRecord } from '../pipeline/import-trades.js';
 import {
@@ -241,7 +244,9 @@ program
       sourceIds: o.source,
       onProgress: (r) => {
         inserted += r.inserted;
-        const status = r.error ? `ERROR ${r.error}` : `${r.inserted} new / ${r.fetched} fetched`;
+        const status = r.error
+          ? `ERROR ${r.error}`
+          : `${r.inserted} new / ${r.fetched} fetched${r.events ? `, ${r.events} events written` : ''}`;
         console.log(`${r.sourceId.padEnd(24)} ${status}`);
       },
     });
@@ -576,7 +581,40 @@ program
       console.log(`     ${it.id}`);
       console.log();
     }
-    console.log(`${rows.length} items. Investigate one: all-int investigate <id>`);
+    console.log(`${rows.length} items. Investigate one: all-int investigate <id>. Share one: all-int card <id> -c`);
+  });
+
+/**
+ * Put text on the system clipboard with whichever tool this machine has.
+ * Returns the tool used, or null when none answered.
+ */
+function copyToClipboard(text: string): string | null {
+  const tools: Array<[string, string[]]> = [
+    ['pbcopy', []],
+    ['wl-copy', []],
+    ['xclip', ['-selection', 'clipboard']],
+    ['xsel', ['--clipboard', '--input']],
+    ['clip.exe', []],
+  ];
+  for (const [bin, args] of tools) {
+    const r = spawnSync(bin, args, { input: text });
+    if (!r.error && r.status === 0) return bin;
+  }
+  return null;
+}
+
+program
+  .command('card <id>')
+  .description('A story as plain text for a group chat: the angle, what happened, the connections, who is involved')
+  .option('-c, --copy', 'also put it on the clipboard')
+  .action((id: string, o) => {
+    const card = buildCard(db(), id);
+    if (!card) { console.error(`No item ${id}.`); process.exitCode = 1; return; }
+    console.log(card);
+    if (o.copy) {
+      const via = copyToClipboard(card);
+      console.error(via ? '\n(copied to the clipboard)' : '\n(no clipboard tool found; copy it from above)');
+    }
   });
 
 program
@@ -686,7 +724,11 @@ program
     const d = db();
     console.log('== ingest ==');
     const ing = await ingest(d, cfg, {});
-    console.log(`${ing.reduce((n, r) => n + r.inserted, 0)} new items`);
+    const recordEvents = ing.reduce((n, r) => n + r.events, 0);
+    console.log(
+      `${ing.reduce((n, r) => n + r.inserted, 0)} new items` +
+      `${recordEvents ? `, ${recordEvents} events written from structured records` : ''}`,
+    );
 
     // Triage gates everything downstream: extraction only ever runs on what
     // this stage decided was worth reading.
@@ -824,6 +866,25 @@ program
   .action((o) => {
     for (const e of topEntities(db(), o.limit)) {
       console.log(`${String(e.mentionCount).padStart(5)}  ${e.kind.padEnd(18)} ${e.name}`);
+    }
+  });
+
+program
+  .command('entities:merge')
+  .description('Merge companies the corpus split in two, then rebuild the map (run once after upgrading)')
+  .option('-q, --quiet', 'print totals only')
+  .action((o) => {
+    const d = db();
+    const r = consolidateCompanies(d);
+    if (!o.quiet) {
+      for (const m of r.merged) {
+        console.log(`merged  ${m.absorbed}  ->  ${m.kept}  (${m.reason === 'ticker' ? 'same ticker' : 'same issuer'})`);
+      }
+    }
+    console.log(`\n${r.merged.length} merged, ${r.renamed} renamed to their issuer name.`);
+    if (r.merged.length || r.renamed) {
+      const g = buildGraph(d);
+      console.log(`Map rebuilt: ${g.edges} edges. Run \`all-int link\` to re-run the detectors on the repaired parties.`);
     }
   });
 

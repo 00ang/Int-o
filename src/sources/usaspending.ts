@@ -1,7 +1,7 @@
 import type { Config } from '../core/config.js';
 import { politeFetch } from '../core/http.js';
 import { stableId } from '../core/ids.js';
-import { UNTRIAGED } from '../core/types.js';
+import { structuredRecordTriage } from '../core/types.js';
 import type { Item, Source } from '../core/types.js';
 
 /**
@@ -14,6 +14,15 @@ import type { Item, Source } from '../core/types.js';
  * grants are excluded here because an indefinite-delivery vehicle is a ceiling,
  * not money actually obligated, and treating it as a payday inflates every
  * signal built on top of it.
+ *
+ * NEW AWARDS ONLY, DATED BY SIGNATURE. Left to its default, the award search
+ * matches any award with a transaction in the window, and sorting by amount
+ * then fills all hundred rows with decades-old programmes whose lifetime value
+ * dwarfs anything signed this week. Dated by their period of performance, those
+ * landed in 1978-2018 and could never meet a 2025-26 trade inside a detector
+ * window - which is why trade-then-award had never fired. `new_awards_only`
+ * keeps awards whose base transaction was signed in the window, and the Base
+ * Obligation Date is when the money was committed, so that is the date used.
  */
 
 interface AwardRow {
@@ -24,6 +33,9 @@ interface AwardRow {
   'Awarding Agency'?: string;
   'Awarding Sub Agency'?: string;
   'Start Date'?: string;
+  /** When the base award was signed: the day the money was committed. */
+  'Base Obligation Date'?: string;
+  'Last Modified Date'?: string;
   'Description'?: string;
   'Contract Award Type'?: string;
 }
@@ -31,13 +43,14 @@ interface AwardRow {
 export function buildAwardSearchBody(sinceDate: string, untilDate: string, minAmount = 10_000_000) {
   return {
     filters: {
-      time_period: [{ start_date: sinceDate, end_date: untilDate }],
+      time_period: [{ start_date: sinceDate, end_date: untilDate, date_type: 'new_awards_only' }],
       award_type_codes: ['A', 'B', 'C', 'D'],
       award_amounts: [{ lower_bound: minAmount }],
     },
     fields: [
       'Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency',
-      'Awarding Sub Agency', 'Start Date', 'Description', 'Contract Award Type',
+      'Awarding Sub Agency', 'Start Date', 'Base Obligation Date', 'Last Modified Date',
+      'Description', 'Contract Award Type',
     ],
     sort: 'Award Amount',
     order: 'desc',
@@ -59,7 +72,7 @@ export function parseAwards(
     const amount = a['Award Amount'] ?? 0;
     const agency = [a['Awarding Agency'], a['Awarding Sub Agency']]
       .filter(Boolean).join(' / ');
-    const start = a['Start Date'] ?? new Date().toISOString().slice(0, 10);
+    const signed = a['Base Obligation Date'] ?? a['Start Date'] ?? fetchedAt.slice(0, 10);
 
     return [{
       id: stableId('item', source.id, awardId),
@@ -75,15 +88,18 @@ export function parseAwards(
         `Awarding agency: ${agency}`,
         `Obligated amount: USD ${amount.toLocaleString('en-US')}`,
         `Award type: ${a['Contract Award Type'] ?? 'unspecified'}`,
-        `Period of performance start: ${start}`,
+        a['Base Obligation Date'] ? `Signed: ${a['Base Obligation Date'].slice(0, 10)}` : '',
+        a['Start Date'] ? `Period of performance start: ${a['Start Date']}` : '',
         a.Description ? `Description: ${a.Description}` : '',
       ].filter(Boolean).join('\n'),
       author: agency || null,
-      publishedAt: new Date(`${start}T12:00:00Z`).toISOString(),
+      publishedAt: new Date(`${signed.slice(0, 10)}T12:00:00Z`).toISOString(),
       fetchedAt,
       raw: a as unknown as Record<string, unknown>,
-      extractedAt: null,
-      ...UNTRIAGED,
+      // A dataset row, not an article: its event is written in code at ingest
+      // (see pipeline/records.ts), so neither triage nor extraction reads it.
+      extractedAt: fetchedAt,
+      ...structuredRecordTriage(fetchedAt),
       extractionError: null,
     }];
   });

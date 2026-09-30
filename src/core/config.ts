@@ -26,7 +26,15 @@ export interface Config {
   cliModel: string;
   /** Model alias the CLI backend uses for triage. */
   cliTriageModel: string;
+  /** Model alias the CLI backend uses for extraction. Defaults to cliModel. */
+  cliExtractModel: string;
   model: string;
+  /**
+   * Model for extraction, which runs once per retained item and so is where
+   * most of the spend goes. Defaults to `model`; reading who did what to whom
+   * out of one article is the stage that holds up best on a cheaper model.
+   */
+  extractModel: string;
   /**
    * Triage reads every item, so it runs on the cheapest model that can hold a
    * judgement. Analysis quality shows in extraction and synthesis, not here.
@@ -58,7 +66,9 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     llmProvider: process.env.ALLINT_LLM_PROVIDER === 'claude-cli' ? 'claude-cli' : 'anthropic',
     cliModel: process.env.ALLINT_CLI_MODEL ?? 'sonnet',
     cliTriageModel: process.env.ALLINT_CLI_TRIAGE_MODEL ?? 'haiku',
-    model: process.env.ALLINT_MODEL ?? 'claude-opus-5',
+    cliExtractModel: process.env.ALLINT_CLI_EXTRACT_MODEL ?? process.env.ALLINT_CLI_MODEL ?? 'sonnet',
+    model: process.env.ALLINT_MODEL ?? 'claude-opus-5-5',
+    extractModel: process.env.ALLINT_EXTRACT_MODEL ?? process.env.ALLINT_MODEL ?? 'claude-opus-5-5',
     triageModel: process.env.ALLINT_TRIAGE_MODEL ?? 'claude-haiku-4-5-20251001',
     triageBatchSize: Number(process.env.ALLINT_TRIAGE_BATCH_SIZE ?? 12),
     triageBatchLimit: Number(process.env.ALLINT_TRIAGE_LIMIT ?? 120),

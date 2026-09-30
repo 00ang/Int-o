@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { z, type ZodType } from 'zod';
 
 /**
@@ -9,13 +10,10 @@ import { z, type ZodType } from 'zod';
  * margin. For a personal system that wants to read a few thousand records
  * without watching a meter, that is the difference between running and not.
  *
- * WHAT IS DIFFERENT, AND IT MATTERS. The API constrains generation to the
- * schema, so malformed output is impossible. The CLI returns text, so the
- * schema becomes a check applied afterwards rather than a guarantee applied
- * during. Nothing downstream may notice that difference: every response is
- * parsed and validated against the same Zod schema the API path uses, and a
- * response that fails is an error, never a partial result. The contract at the
- * boundary is identical; only where it is enforced has moved.
+ * WHAT IS DIFFERENT, AND IT MATTERS. The CLI enforces the schema itself
+ * (`--json-schema`), as the API does, and every response is validated again
+ * against the same Zod schema the API path uses; a response that fails is an
+ * error, never a partial result. The contract at the boundary is identical.
  *
  * The other real difference is the limit. This shares a subscription's rate
  * limit with every interactive session, so it can refuse when the API would
@@ -29,37 +27,51 @@ export interface CliOptions {
   schema: ZodType;
   /** Model alias the CLI understands: opus, sonnet, haiku. */
   model?: string;
+  /** Thinking depth. Omitted, the CLI uses its own default, which is high. */
+  effort?: string | null;
   timeoutMs?: number;
   /** Path to the binary. Overridable for a non-standard install. */
   bin?: string;
 }
 
 /**
- * The instruction that replaces structured outputs.
+ * The arguments for one bare model call.
  *
- * A schema in the prompt is weaker than a schema in the decoder, so it is
- * stated as flatly as possible and the result is validated regardless. Asking
- * for bare JSON rather than a fenced block removes one whole class of parsing
- * ambiguity, though the fence is stripped anyway because models add it.
+ * Left to its defaults, `claude -p` is a coding agent: its own system prompt,
+ * every built-in tool's definition, the user's MCP servers and skills, a saved
+ * session per call. Measured, that is about 29,000 tokens of context in front
+ * of a nine-token question, spent on every triage batch and every extraction
+ * against the same rate limit the reader's own sessions use. None of it is
+ * needed to fill in a schema, so all of it is turned off, which brings the same
+ * call to under a thousand. The effort is set to match the API path; the CLI's
+ * own default is higher, and thinking is billed to the limit like anything else.
  */
-function buildPrompt(opts: CliOptions): string {
-  const jsonSchema = JSON.stringify(
-    z.toJSONSchema(opts.schema, { target: 'draft-7', io: 'output' }),
-  );
-  return [
-    opts.system,
-    '',
-    '---',
-    '',
-    'Respond with a single JSON object and nothing else. No prose before or after,',
-    'no code fence, no explanation. It must validate against this JSON Schema:',
-    '',
-    jsonSchema,
-    '',
-    '---',
-    '',
-    opts.user,
-  ].join('\n');
+export function cliArgs(opts: {
+  system: string;
+  model?: string;
+  effort?: string | null;
+  schemaJson?: string;
+}): string[] {
+  const args = [
+    '-p',
+    '--output-format', 'json',
+    '--system-prompt', opts.system,
+    '--tools', '',
+    '--strict-mcp-config',
+    '--disable-slash-commands',
+    '--no-session-persistence',
+  ];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.effort) args.push('--effort', opts.effort);
+  if (opts.schemaJson) args.push('--json-schema', opts.schemaJson);
+  return args;
+}
+
+/** What `--output-format json` returns, as far as this file reads it. */
+interface CliEnvelope {
+  is_error?: boolean;
+  result?: string;
+  structured_output?: unknown;
 }
 
 /**
@@ -121,7 +133,9 @@ export function cliEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv
 /** Everything the CLI wrote, or a rejection describing why it did not run. */
 function runCli(bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: cliEnv() });
+    // Run from a neutral directory so a CLAUDE.md in whatever folder the
+    // command was started from is not read into every call.
+    const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: cliEnv(), cwd: tmpdir() });
     let out = '';
     let err = '';
     const timer = setTimeout(() => {
@@ -149,36 +163,62 @@ function runCli(bin: string, args: string[], input: string, timeoutMs: number): 
   });
 }
 
-/**
- * A session limit reads as success at the process level.
- *
- * The CLI prints the notice and exits zero, so without this the notice would be
- * handed to the JSON parser and reported as malformed output - which would make
- * a transient limit look like a permanent fault in the item and retire it.
- */
+/** The wording of a subscription limit, wherever the CLI reports it. */
 const LIMIT_NOTICE = /hit your (session|usage) limit|rate limit|resets? at|usage limit reached/i;
 
-export async function structuredViaCli<T>(opts: CliOptions): Promise<T> {
-  const bin = opts.bin ?? 'claude';
-  const args = ['-p', '--output-format', 'text'];
-  if (opts.model) args.push('--model', opts.model);
-
-  const raw = await runCli(bin, args, buildPrompt(opts), opts.timeoutMs ?? 300_000);
-
-  if (LIMIT_NOTICE.test(raw) && raw.trim().length < 400) {
-    throw new Error(`claude CLI rate limit: ${raw.trim().slice(0, 160)}`);
-  }
-
-  const json = extractJson(raw);
-  let parsed: unknown;
+/**
+ * Read the JSON envelope, turning a refusal to run into an error that says why.
+ *
+ * A session limit reads as success at the process level: the CLI reports it in
+ * the envelope and may still exit zero. Without this it would be handed to the
+ * schema check and reported as malformed output - which would make a transient
+ * limit look like a permanent fault in the item and retire it.
+ */
+export function readEnvelope(raw: string): CliEnvelope {
+  let env: CliEnvelope;
   try {
-    parsed = JSON.parse(json);
-  } catch (e) {
-    throw new Error(`claude CLI returned unparseable JSON: ${(e as Error).message}`);
+    env = JSON.parse(raw.trim()) as CliEnvelope;
+  } catch {
+    // Not an envelope at all: most likely a bare limit notice.
+    if (LIMIT_NOTICE.test(raw)) throw new Error(`claude CLI rate limit: ${raw.trim().slice(0, 160)}`);
+    throw new Error(`claude CLI returned no JSON envelope: ${raw.trim().slice(0, 160)}`);
+  }
+  const text = String(env.result ?? '');
+  if (LIMIT_NOTICE.test(text) && text.length < 400) {
+    throw new Error(`claude CLI rate limit: ${text.slice(0, 160)}`);
+  }
+  // Reported as a failed run so it reads as transient: an error the CLI raised
+  // is at least as likely to be about the service as about the item, and an
+  // item retired by mistake never comes back.
+  if (env.is_error) throw new Error(`claude CLI exited 1: ${text.slice(0, 200)}`);
+  return env;
+}
+
+export async function structuredViaCli<T>(opts: CliOptions): Promise<T> {
+  const schemaJson = JSON.stringify(
+    z.toJSONSchema(opts.schema, { target: 'draft-7', io: 'output' }),
+  );
+  const raw = await runCli(
+    opts.bin ?? 'claude',
+    cliArgs({ system: opts.system, model: opts.model, effort: opts.effort, schemaJson }),
+    opts.user,
+    opts.timeoutMs ?? 300_000,
+  );
+  const env = readEnvelope(raw);
+
+  // The CLI hands back the constrained object directly; the text is only a
+  // fallback for a version that does not.
+  let parsed: unknown = env.structured_output;
+  if (parsed === undefined) {
+    try {
+      parsed = JSON.parse(extractJson(String(env.result ?? '')));
+    } catch (e) {
+      throw new Error(`claude CLI returned unparseable JSON: ${(e as Error).message}`);
+    }
   }
 
-  // The same guarantee the API path gets, enforced here instead of in the
-  // decoder. Nothing downstream ever sees an unvalidated shape.
+  // The same guarantee the API path gets, checked here as well. Nothing
+  // downstream ever sees an unvalidated shape.
   const result = opts.schema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -193,17 +233,16 @@ export async function structuredViaCli<T>(opts: CliOptions): Promise<T> {
 
 /** Free-text generation through the CLI, for the prose the brief needs. */
 export async function proseViaCli(
-  opts: { system: string; user: string; model?: string; bin?: string; timeoutMs?: number },
+  opts: {
+    system: string; user: string; model?: string; effort?: string | null;
+    bin?: string; timeoutMs?: number;
+  },
 ): Promise<string> {
-  const args = ['-p', '--output-format', 'text'];
-  if (opts.model) args.push('--model', opts.model);
   const raw = await runCli(
-    opts.bin ?? 'claude', args,
-    `${opts.system}\n\n---\n\n${opts.user}`,
+    opts.bin ?? 'claude',
+    cliArgs({ system: opts.system, model: opts.model, effort: opts.effort }),
+    opts.user,
     opts.timeoutMs ?? 300_000,
   );
-  if (LIMIT_NOTICE.test(raw) && raw.trim().length < 400) {
-    throw new Error(`claude CLI rate limit: ${raw.trim().slice(0, 160)}`);
-  }
-  return raw.trim();
+  return String(readEnvelope(raw).result ?? '').trim();
 }
