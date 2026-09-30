@@ -20,6 +20,9 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const dossiers = dossiersForItem(id);
   // Read-only, from what is on file: making a card never spends anything.
   const card = buildCard(db(), id);
+  // A contract, filing or disclosure row rather than an article: triage never
+  // read it, so there is no verdict or angle to show.
+  const isRecord = it.topic === 'structured record';
 
   return (
     <>
@@ -27,8 +30,8 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         <div className="sheet-head">
           <span className="num">A.</span>
           <h2>Item record</h2>
-          <span className={`stamp ${it.verdict === 'notable' ? 'stamp-red' : 'stamp-hi'}`}>
-            {it.verdict === 'notable' ? 'Notable' : 'Worth a look'}
+          <span className={`stamp ${isRecord ? 'stamp-plain' : it.verdict === 'notable' ? 'stamp-red' : 'stamp-hi'}`}>
+            {isRecord ? 'Public record' : it.verdict === 'notable' ? 'Notable' : it.verdict === 'mundane' ? 'Routine' : 'Worth a look'}
           </span>
         </div>
 
@@ -44,9 +47,9 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           <div className="fbody">
             <span className="flabel">Subject</span>
             <h3 style={{ fontSize: '1.3rem', lineHeight: 1.25, textTransform: 'uppercase', marginBottom: 8 }}>
-              {it.topic}
+              {isRecord ? it.title : it.topic}
             </h3>
-            <p className="rec-title" style={{ marginBottom: 8 }}>{it.title}</p>
+            {isRecord ? null : <p className="rec-title" style={{ marginBottom: 8 }}>{it.title}</p>}
             <a href={it.url} target="_blank" rel="noopener noreferrer">Original record &rarr;</a>
           </div>
         </div>
@@ -66,8 +69,12 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         <div className="formfield">
           <span className="fnum">42.</span>
           <div className="fbody">
-            <span className="flabel">Basis for retention</span>
-            <p style={{ margin: 0, lineHeight: 1.55 }}>{it.reason}</p>
+            <span className="flabel">{isRecord ? 'How it was read' : 'Basis for retention'}</span>
+            <p style={{ margin: 0, lineHeight: 1.55 }}>
+              {isRecord
+                ? 'A filing or dataset row, read field by field in code. No model was involved; every event below is what the record states.'
+                : it.reason}
+            </p>
           </div>
         </div>
 

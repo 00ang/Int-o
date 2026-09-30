@@ -63,6 +63,10 @@ export type SourceKind =
   | 'federal-register'
   | 'usaspending'
   | 'sec-edgar'
+  /** EDGAR Form 4: each filing's XML read in code into insider trade events. */
+  | 'sec-form4'
+  /** Senate Lobbying Disclosure Act filings, read in code into lobbying events. */
+  | 'lobbying'
   | 'stock-act'
   | 'prediction-market'
   | 'json-api'
@@ -187,7 +191,9 @@ export const UNTRIAGED = {
  * what, when and how much, and a model reading it back out can only add cost
  * and error.
  */
-export const STRUCTURED_SOURCE_KINDS = ['import', 'prediction-market', 'usaspending'] as const;
+export const STRUCTURED_SOURCE_KINDS = [
+  'import', 'prediction-market', 'usaspending', 'sec-form4', 'lobbying',
+] as const;
 
 export const structuredRecordTriage = (at: string) => ({
   triagedAt: at,
@@ -263,6 +269,7 @@ export type EventType =
   | 'regulatory-filing'  // 10-K, 8-K, Form 4, merger notification
   | 'securities-trade'   // disclosed purchase or sale
   | 'government-award'   // contract, grant, subsidy, licence
+  | 'lobbying'           // disclosed payment to lobby, or a new lobbying registration
   | 'corporate-action'   // M&A, layoffs, earnings, guidance
   | 'legal-action'       // suit, indictment, ruling, settlement
   | 'military-action'
@@ -326,6 +333,7 @@ export type ConnectionKind =
   | 'trade-then-award'       // disclosed position precedes public money
   | 'policy-then-beneficiary'// rule change precedes private gain
   | 'award-then-trade'       // public money precedes disclosed position
+  | 'lobbying-then-award'    // disclosed lobbying precedes public money
   | 'lobbying-then-policy'
   | 'insider-then-news'
   | 'supply-chain'           // one action moves inputs for another

@@ -159,7 +159,19 @@ export function consolidateCompanies(db: DB): ConsolidateResult {
     }
   }
 
-  // 2. One ticker, several rows: one issuer.
+  // 2. The same name as a company and as an organisation: one party, kept as
+  //    the company, since that is the kind contracts and trades resolve to.
+  const pairs = db.prepare(
+    `SELECT c.id AS companyId, o.id AS orgId, c.name AS companyName, o.name AS orgName
+       FROM entities c JOIN entities o ON o.slug = c.slug
+      WHERE c.kind = 'company' AND o.kind = 'organization'`,
+  ).all() as Array<{ companyId: string; orgId: string; companyName: string; orgName: string }>;
+  for (const p of pairs) {
+    mergeEntities(db, p.companyId, p.orgId);
+    result.merged.push({ kept: p.companyName, absorbed: p.orgName, reason: 'name' });
+  }
+
+  // 3. One ticker, several rows: one issuer.
   const groups = db.prepare(
     `SELECT ticker FROM entities WHERE kind = 'company' AND ticker IS NOT NULL
       GROUP BY ticker HAVING COUNT(*) > 1`,

@@ -248,3 +248,65 @@ export function partiesWithDossiers(): Set<string> {
   const rows = db().prepare('SELECT entity_id FROM entity_profiles').all() as Array<{ entity_id: string }>;
   return new Set(rows.map((r) => r.entity_id));
 }
+
+/**
+ * Public records: the money moving, read straight from filings.
+ *
+ * Insider trades, congressional trades, lobbying and contract awards all
+ * arrive as dataset rows and are written as events in code, so this is a list
+ * of what the records state, with no model in the path. `linked` counts the
+ * connections the detectors found touching the row - the ones worth opening.
+ */
+export type RecordKind = 'insider' | 'congress' | 'lobbying' | 'contracts';
+
+export interface RecordRow {
+  id: string;
+  itemId: string;
+  kind: RecordKind;
+  summary: string;
+  occurredAt: string;
+  amount: number | null;
+  tags: string;
+  url: string;
+  linked: number;
+}
+
+const RECORD_KIND_SQL = `
+  CASE
+    WHEN e.type = 'securities-trade' AND e.tags LIKE '%"form-4"%' THEN 'insider'
+    WHEN e.type = 'securities-trade' AND e.tags LIKE '%"congressional-trade"%' THEN 'congress'
+    WHEN e.type = 'lobbying' AND s.kind = 'lobbying' THEN 'lobbying'
+    WHEN e.type = 'government-award' AND s.kind = 'usaspending' THEN 'contracts'
+  END`;
+
+export function records(opts: { kind?: RecordKind; q?: string; sort?: 'newest' | 'biggest'; limit?: number } = {}): RecordRow[] {
+  const where = [`${RECORD_KIND_SQL} IS NOT NULL`];
+  const params: Record<string, unknown> = { limit: opts.limit ?? 150 };
+  if (opts.kind) { where.push(`${RECORD_KIND_SQL} = @kind`); params.kind = opts.kind; }
+  if (opts.q) { where.push('e.summary LIKE @q'); params.q = `%${opts.q}%`; }
+  const order = opts.sort === 'biggest'
+    ? 'COALESCE(e.amount_value, 0) DESC, e.occurred_at DESC'
+    : 'e.occurred_at DESC, COALESCE(e.amount_value, 0) DESC';
+  return db().prepare(`
+    SELECT e.id, e.item_id AS itemId, ${RECORD_KIND_SQL} AS kind, e.summary,
+           e.occurred_at AS occurredAt, e.amount_value AS amount, e.tags, i.url,
+           (SELECT COUNT(*) FROM connections c
+             WHERE c.from_event_id = e.id OR c.to_event_id = e.id) AS linked
+      FROM events e
+      JOIN items i ON i.id = e.item_id
+      JOIN sources s ON s.id = i.source_id
+     WHERE ${where.join(' AND ')}
+     ORDER BY ${order}
+     LIMIT @limit`).all(params) as RecordRow[];
+}
+
+export function recordCounts(): Record<RecordKind, number> {
+  const rows = db().prepare(`
+    SELECT ${RECORD_KIND_SQL} AS kind, COUNT(*) AS n
+      FROM events e JOIN items i ON i.id = e.item_id JOIN sources s ON s.id = i.source_id
+     WHERE ${RECORD_KIND_SQL} IS NOT NULL
+     GROUP BY 1`).all() as Array<{ kind: RecordKind; n: number }>;
+  const out: Record<RecordKind, number> = { insider: 0, congress: 0, lobbying: 0, contracts: 0 };
+  for (const r of rows) out[r.kind] = r.n;
+  return out;
+}

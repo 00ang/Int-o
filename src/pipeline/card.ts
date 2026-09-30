@@ -42,6 +42,9 @@ const MAX_PARTIES = 5;
 
 const day = (iso: string) => iso.slice(0, 10);
 
+/** Imported rows carry a placeholder where a web address would be; a friend cannot open it. */
+const isWeb = (url: string) => /^https?:\/\//.test(url);
+
 /** First sentence, bounded, so one dossier cannot swallow the card. */
 function firstSentence(text: string, max = 220): string {
   const t = text.replace(/\s+/g, ' ').trim();
@@ -70,13 +73,13 @@ export function buildCard(db: DB, itemId: string): string | null {
     [source?.name ?? item.sourceId, source?.tier ? `${source.tier} source` : null, day(item.publishedAt)]
       .filter(Boolean).join(' · '),
   );
-  lines.push(item.url);
+  if (isWeb(item.url)) lines.push(item.url);
 
-  if (item.triageAngle || item.triageReason) {
-    lines.push('');
-    if (item.triageAngle) lines.push(`The angle: ${item.triageAngle}`);
-    if (item.triageReason && item.triageVerdict !== 'mundane') lines.push(`Why it stood out: ${item.triageReason}`);
-  }
+  const why = [
+    item.triageAngle ? `The angle: ${item.triageAngle}` : null,
+    item.triageReason && item.triageVerdict !== 'mundane' ? `Why it stood out: ${item.triageReason}` : null,
+  ].filter((l): l is string => !!l);
+  if (why.length) lines.push('', ...why);
 
   if (events.length) {
     lines.push('', 'What happened');
@@ -106,7 +109,7 @@ export function buildCard(db: DB, itemId: string): string | null {
       const other = otherSide(db, c, ownIds);
       if (other) {
         const otherItem = getItem(db, other.itemId);
-        lines.push(`  Linked to, ${day(other.occurredAt)}: ${other.summary}${otherItem ? ` ${otherItem.url}` : ''}`);
+        lines.push(`  Linked to, ${day(other.occurredAt)}: ${other.summary}${otherItem && isWeb(otherItem.url) ? ` ${otherItem.url}` : ''}`);
       }
       if (c.falsifier) lines.push(`  Would be wrong if: ${c.falsifier}`);
     }

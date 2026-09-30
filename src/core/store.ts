@@ -273,6 +273,12 @@ export function searchItems(db: DB, query: string, limit = 25): Item[] {
 // Entities
 // ---------------------------------------------------------------------------
 
+/** Kinds a source can only guess between, and which therefore resolve as one. */
+const SIBLING_KIND: Partial<Record<EntityKind, EntityKind>> = {
+  company: 'organization',
+  organization: 'company',
+};
+
 /** A name written entirely in capitals, as registries and filings do. */
 export const isShouting = (name: string): boolean => /[A-Z]/.test(name) && name === name.toUpperCase();
 
@@ -311,6 +317,13 @@ export function resolveEntity(
       ? db.prepare(
         'SELECT * FROM entities WHERE ticker = ? AND kind = ? ORDER BY mention_count DESC LIMIT 1',
       ).get(ticker, input.kind)
+      : undefined)
+    // Whether a name is a company or an organisation is a guess made from how
+    // each source writes it - a lobbying client with no "Inc." reads as an
+    // association - and the same name under both kinds is one party far more
+    // often than two. Guessing differently must not split it.
+    ?? (SIBLING_KIND[input.kind]
+      ? db.prepare('SELECT * FROM entities WHERE slug = ? AND kind = ?').get(slug, SIBLING_KIND[input.kind])
       : undefined)) as Record<string, any> | undefined;
 
   if (existing) {
@@ -474,6 +487,28 @@ export function eventsSince(db: DB, sinceIso: string, limit = 1000): Event[] {
   );
 }
 
+/** Lobbying events, biggest money first within the window, optionally only the revolving door. */
+export function lobbyingEvents(
+  db: DB,
+  opts: { sinceIso?: string; revolvingOnly?: boolean; client?: string; limit?: number } = {},
+): Event[] {
+  const where = ["e.type = 'lobbying'"];
+  const params: unknown[] = [];
+  if (opts.sinceIso) { where.push('e.occurred_at >= ?'); params.push(opts.sinceIso); }
+  if (opts.revolvingOnly) where.push(`e.tags LIKE '%"revolving-door"%'`);
+  if (opts.client) {
+    where.push(`EXISTS (
+      SELECT 1 FROM event_entities ee JOIN entities ent ON ent.id = ee.entity_id
+       WHERE ee.event_id = e.id AND ee.role = 'beneficiary' AND ent.slug LIKE ?)`);
+    params.push(`%${slugifyEntity(opts.client)}%`);
+  }
+  params.push(opts.limit ?? 40);
+  return hydrate(db, db.prepare(
+    `SELECT e.* FROM events e WHERE ${where.join(' AND ')}
+      ORDER BY e.occurred_at DESC, COALESCE(e.amount_value, 0) DESC LIMIT ?`,
+  ).all(...params));
+}
+
 export function eventsByType(db: DB, type: string, sinceIso?: string): Event[] {
   const rows = sinceIso
     ? db.prepare('SELECT * FROM events WHERE type = ? AND occurred_at >= ? ORDER BY occurred_at DESC')
@@ -491,12 +526,19 @@ export function eventsByType(db: DB, type: string, sinceIso?: string): Event[] {
  */
 export function tradeEvents(
   db: DB,
-  opts: { lateOnly?: boolean; congressionalOnly?: boolean; filer?: string; limit?: number } = {},
+  opts: {
+    lateOnly?: boolean; congressionalOnly?: boolean; insiderOnly?: boolean; buysOnly?: boolean;
+    filer?: string; limit?: number;
+  } = {},
 ): Event[] {
   const where = ["e.type = 'securities-trade'"];
   const params: unknown[] = [];
   if (opts.lateOnly) where.push(`e.tags LIKE '%"late-filing"%'`);
   if (opts.congressionalOnly) where.push(`e.tags LIKE '%"congressional-trade"%'`);
+  if (opts.insiderOnly) where.push(`e.tags LIKE '%"form-4"%'`);
+  // An insider's open-market purchase is the rare, voluntary signal; sales
+  // are mostly diversification and tax.
+  if (opts.buysOnly) where.push(`(e.tags LIKE '%"code:P"%' OR e.tags LIKE '%"action:purchase"%')`);
   if (opts.filer) {
     where.push(`EXISTS (
       SELECT 1 FROM event_entities ee JOIN entities ent ON ent.id = ee.entity_id

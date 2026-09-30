@@ -48,9 +48,10 @@ export async function POST(
       });
     }
 
-    if (!cfg.anthropicApiKey) {
+    // The subscription backend needs no key; only the API backend does.
+    if (cfg.llmProvider !== 'claude-cli' && !cfg.anthropicApiKey) {
       return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY is not set for the web process.' },
+        { error: 'ANTHROPIC_API_KEY is not set for the web process. Set it, or set ALLINT_LLM_PROVIDER=claude-cli to use a Claude subscription.' },
         { status: 400 },
       );
     }

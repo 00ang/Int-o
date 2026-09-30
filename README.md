@@ -40,7 +40,8 @@ npm link          # makes `all-int` available anywhere
 cp .env.example .env    # then fill in ANTHROPIC_API_KEY, or set
                         # ALLINT_LLM_PROVIDER=claude-cli to use a subscription
 
-all-int demo      # see it work: no key, no network
+all-int web --demo   # open the app in your browser on an invented corpus: no key, no network
+all-int demo      # the same engine in the terminal, in about a second
 all-int init      # create the DB, load the source registry
 all-int sources:check --fix   # confirm which feeds answer - do this first
 all-int run       # ingest -> triage -> extract -> link -> thread -> brief
@@ -55,6 +56,15 @@ resolves to from wherever you were standing.
 `demo` seeds a synthetic corpus and runs the detectors. It needs nothing and
 proves the engine works in about a second.
 
+`web` starts the web app and opens it in your browser; Ctrl+C stops it. With
+`--demo` it builds a separate invented corpus in `data/demo.db` first - a
+reading queue with angles, insider trades, congressional trades, lobbying with
+a former Senate staffer among the lobbyists, new contracts, and the thirteen
+connections the detectors find between them - so there is something to click
+through before you have ingested anything. Every name in it is fictional.
+Without `--demo` it opens your own database. After pulling changes, run
+`npm run build` first: the app and the command both run from the build.
+
 ### Read this before trusting the source list
 
 **The 79 feed URLs in `src/sources/registry.ts` have not been confirmed against
@@ -66,7 +76,7 @@ disables the rest. Run it on your own machine before your first real ingest.
 Expect a meaningful number to fail - feed URLs rot constantly, and the wire
 services in particular move theirs.
 
-Everything else in the system is verified: 292 tests cover parsing, entity
+Everything else in the system is verified: 340 tests cover parsing, entity
 resolution, the detectors, the scoring, the trade import and the forecasting
 loop, all against recorded fixtures.
 
@@ -99,7 +109,9 @@ loop, all against recorded fixtures.
 | `run` | The whole pipeline | **yes** |
 | `threads` / `thread <id>` | List / read storylines | no |
 | `connections [-b basis]` | Browse links found | no |
-| `trades [--late] [-f name]` | Browse disclosed trades and late filings | no |
+| `web [--demo]` | Start the web app and open it in your browser | no |
+| `trades [--late] [-i] [-b] [-f name]` | Browse disclosed trades; `-i` insiders only, `-b` purchases only | no |
+| `lobbying [-r] [-c client]` | Browse lobbying disclosures; `-r` only where lobbyists held government posts | no |
 | `card <id> [-c]` | One story as plain text for a group chat (`-c` copies it) | no |
 | `entities:merge` | Merge companies the corpus split in two, rebuild the map | no |
 | `verdict <id> <sound\|coincidence\|wrong>` | Record your judgement | no |
@@ -171,6 +183,53 @@ capitals, and a wire story names the company plainly; resolution strips the
 class of security and matches on ticker, so all three land on one party. A
 corpus built before this holds them apart: run `all-int entities:merge` once to
 merge them, then `all-int link` to re-run the detectors on the repaired parties.
+
+## Insider trades and lobbying
+
+Two more structured sources, read in code with no model involved.
+
+**SEC Form 4.** The EDGAR feed says only that an insider filed. Each new filing's
+ownership XML is fetched once (one request per filing; filings already on file
+are skipped) and read: who the insider is and their role, the company and
+ticker, and each transaction. Open-market purchases and sales become
+`securities-trade` events, a sale filled in twenty lots at twenty prices
+folded into one per day with its weighted price. Grants, option exercises,
+shares withheld for tax and gifts are compensation mechanics and are not
+treated as trades. A trade the insider marked as made under a 10b5-1 plan says
+so, since a pre-scheduled sale is a different thing from a decision. Insiders
+are companies' own officers, so their trades join to that company's contracts
+(`trade-then-award`) and news (`insider-then-news`) exactly as congressional
+trades do. `all-int trades -i -b` lists insider purchases, the rare voluntary
+signal.
+
+**Senate lobbying disclosures.** Quarterly reports over $20,000, and new
+registrations: who paid whom to lobby, how much, on which issues and bills,
+which agencies were contacted, and which lobbyists held government posts - the
+revolving door, as the filer declares it. Each becomes a `lobbying` event with
+the client as the party the lobbying was for, and two detectors read them:
+
+| detector | fires when |
+|---|---|
+| `lobbying-then-award` | a client was paying for lobbying in a quarter that began up to 180 days before public money went to it |
+| `lobbying-then-policy` | the same, before a policy action that names the client as a beneficiary |
+
+A lobbying report is dated by the start of the quarter it covers, not the day
+it was posted weeks later, so a contract won mid-quarter still reads as
+following the lobbying. Agencies are renamed from the filing's "Defense - Dept
+of (DOD)" to "Department of Defense" so the agency lobbied and the agency that
+paid are one party on the map. The lobbying API ignores filter names it does
+not recognise and answers with the whole database, so every filter is applied
+again on our side. Anonymous access is about 15 requests a minute; a free key
+from lda.senate.gov in `LDA_API_KEY` raises it.
+
+Both, like contract awards, land on the **Records** page of the web app:
+every insider trade, congressional trade, lobbying filing and contract, newest
+or biggest first, with the ones the detectors linked marked.
+
+**Neither was run against the live service from where it was built** - that
+environment could not reach sec.gov or lda.senate.gov. Both are tested against
+sample documents in the published formats. Run `all-int sources:check` once on
+your machine; if either fails, the error says which request.
 
 ## Party dossiers
 
@@ -583,6 +642,7 @@ generation are where capability actually shows, and they stay on `ALLINT_MODEL`.
 | `ALLINT_HOST_DELAY_MS` | Politeness delay per host | 400 |
 | `CONGRESS_GOV_API_KEY` | Congress.gov (free at api.data.gov) | none |
 | `COURTLISTENER_API_TOKEN` | CourtListener | none |
+| `LDA_API_KEY` | Senate lobbying disclosures; optional, raises the rate limit (free at lda.senate.gov) | none |
 
 Set `ALLINT_CONTACT_EMAIL`. SEC EDGAR and several other government hosts
 throttle or refuse traffic that does not identify itself, and doing so is a
@@ -593,7 +653,7 @@ condition of their access policies.
 ## Status and what's next
 
 Built: the core engine, the CLI, the trade import path and the forecasting
-loop. Verified: 292 tests over parsing, entity resolution, detectors, scoring,
+loop. Verified: 340 tests over parsing, entity resolution, detectors, scoring,
 import, market matching and calibration. Unverified: the feed URLs, which need
 `sources:check --fix` on a networked machine.
 
@@ -633,7 +693,8 @@ awards and other structured records](#contract-awards-and-other-structured-recor
 
 ```bash
 npm run build          # the engine, including the .d.ts the app imports
-npm run web            # http://localhost:3005
+all-int web            # starts http://localhost:3005 and opens your browser
+all-int web --demo     # the same, on an invented corpus
 ```
 
 `web/` is a Next.js app over the same SQLite file. It reads through its own

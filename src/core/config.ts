@@ -51,6 +51,8 @@ export interface Config {
   hostDelayMs: number;
   congressApiKey: string | null;
   courtListenerToken: string | null;
+  /** Senate LDA key. Optional: anonymous access works, at about 15 requests a minute. */
+  ldaApiKey: string | null;
 }
 
 export function loadConfig(overrides: Partial<Config> = {}): Config {
@@ -77,6 +79,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     hostDelayMs: Number(process.env.ALLINT_HOST_DELAY_MS ?? 400),
     congressApiKey: process.env.CONGRESS_GOV_API_KEY ?? null,
     courtListenerToken: process.env.COURTLISTENER_API_TOKEN ?? null,
+    ldaApiKey: process.env.LDA_API_KEY || null,
     ...overrides,
   };
 }

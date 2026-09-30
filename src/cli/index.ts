@@ -6,7 +6,7 @@ import {
   connectionsSince, counts, eventsForEntity, findEntityByName, getEvent, getItem, insertConnection,
   getSource, listSources, listThreads, searchItems, setConnectionVerdict, threadEvents,
   topEntities, latestBrief, getThread, tradeEvents, listForecasts, getForecast,
-  resolveForecast, calibration, triagedQueue, getEntity, findEntityBySlug,
+  resolveForecast, calibration, triagedQueue, getEntity, findEntityBySlug, lobbyingEvents,
 } from '../core/store.js';
 import { buildBrief } from '../pipeline/brief.js';
 import { extract } from '../pipeline/extract.js';
@@ -26,7 +26,11 @@ import { reconcile } from '../pipeline/reconcile.js';
 import { fetchBodies } from '../pipeline/bodies.js';
 import { consolidateCompanies } from '../pipeline/consolidate.js';
 import { buildCard } from '../pipeline/card.js';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { seedShowcase } from './showcase.js';
 import { ptrFilings } from '../core/store.js';
 import type { TradeRecord } from '../pipeline/import-trades.js';
 import {
@@ -202,12 +206,16 @@ program
   .description('Browse disclosed trades, newest first')
   .option('--late', `only trades filed past the ${STOCK_ACT_FILING_DEADLINE_DAYS}-day deadline`)
   .option('-c, --congressional', 'only congressional trades')
+  .option('-i, --insiders', 'only corporate insiders (SEC Form 4)')
+  .option('-b, --buys', 'only purchases')
   .option('-f, --filer <name>', 'only this filer')
   .option('-l, --limit <n>', 'how many', Number, 40)
   .action((o) => {
     const rows = tradeEvents(db(), {
       lateOnly: o.late,
       congressionalOnly: o.congressional,
+      insiderOnly: o.insiders,
+      buysOnly: o.buys,
       filer: o.filer,
       limit: o.limit,
     });
@@ -225,6 +233,27 @@ program
     }
     const late = rows.filter((e) => e.tags.includes('late-filing')).length;
     console.log(`\n${rows.length} shown, ${late} filed late.`);
+  });
+
+program
+  .command('lobbying')
+  .description('Lobbying disclosures, newest first: who paid whom, how much, and who used to work there')
+  .option('-r, --revolving', 'only filings whose lobbyists held government posts')
+  .option('-c, --client <name>', 'only this client')
+  .option('-l, --limit <n>', 'how many', Number, 40)
+  .action((o) => {
+    const rows = lobbyingEvents(db(), { revolvingOnly: o.revolving, client: o.client, limit: o.limit });
+    if (rows.length === 0) {
+      console.log('No lobbying on file yet. Run: all-int ingest -s senate-lda');
+      return;
+    }
+    for (const ev of rows) {
+      const amount = ev.amount ? `$${Math.round(ev.amount.value).toLocaleString('en-US')}` : '';
+      const door = ev.tags.includes('revolving-door') ? ' DOOR' : '';
+      console.log(`${ev.occurredAt.slice(0, 10)}  ${amount.padStart(12)}${door.padEnd(5)} ${ev.summary}`);
+    }
+    const doors = rows.filter((e) => e.tags.includes('revolving-door')).length;
+    console.log(`\n${rows.length} shown, ${doors} with former officials among the lobbyists.`);
   });
 
 // ---------------------------------------------------------------------------
@@ -602,6 +631,94 @@ function copyToClipboard(text: string): string | null {
   }
   return null;
 }
+
+/** Open a URL in the default browser, quietly doing nothing where there is none. */
+function openBrowser(url: string): void {
+  const [cmd, args] = process.platform === 'darwin' ? ['open', [url]]
+    : process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]]
+      : ['xdg-open', [url]];
+  try {
+    spawn(cmd as string, args as string[], { stdio: 'ignore', detached: true })
+      .on('error', () => {})
+      .unref();
+  } catch { /* no browser to open; the URL is printed */ }
+}
+
+program
+  .command('web')
+  .description('Start the web app and open it in your browser (Ctrl+C to stop)')
+  .option('--demo', 'use an invented demo corpus instead of your database: no network, no key, nothing billed')
+  .option('-p, --port <n>', 'port to serve on', Number, 3005)
+  .option('--no-open', 'do not open a browser')
+  .action(async (o) => {
+    // src/cli and dist/cli both sit two levels below the project root.
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    let dbPath = cfg.dbPath;
+
+    if (o.demo) {
+      // Its own file, rebuilt each time, so the demo never touches real data.
+      dbPath = join(root, 'data', 'demo.db');
+      mkdirSync(dirname(dbPath), { recursive: true });
+      for (const suffix of ['', '-wal', '-shm']) rmSync(dbPath + suffix, { force: true });
+      const d = openDb(dbPath);
+      const r = seedShowcase(d);
+      d.close();
+      console.log(`Demo corpus: ${r.items} items, ${r.events} events, ${r.connections} connections.`);
+      console.log('Every name in it is invented. It shows the machinery, not a claim about anyone.\n');
+    } else if (!existsSync(dbPath)) {
+      console.error(`No database at ${dbPath}.\nRun \`all-int init\` then \`all-int ingest\`, or try \`all-int web --demo\`.`);
+      process.exitCode = 1;
+      return;
+    }
+
+    // The app imports the engine from the build, so it has to exist.
+    if (!existsSync(join(root, 'dist', 'pipeline', 'card.js'))) {
+      console.error('The engine is not built yet. Run `npm run build` in the project folder first.');
+      process.exitCode = 1;
+      return;
+    }
+    const nextBin = [
+      join(root, 'node_modules', 'next', 'dist', 'bin', 'next'),
+      join(root, 'web', 'node_modules', 'next', 'dist', 'bin', 'next'),
+    ].find((p) => existsSync(p));
+    if (!nextBin) {
+      console.error('The web app\'s packages are not installed. Run `npm install` in the project folder first.');
+      process.exitCode = 1;
+      return;
+    }
+
+    const url = `http://localhost:${o.port}`;
+    const child = spawn(process.execPath, [nextBin, 'dev', '-p', String(o.port)], {
+      cwd: join(root, 'web'),
+      stdio: 'inherit',
+      // Absolute, because the app runs from web/ and a relative path from .env
+      // would resolve somewhere else.
+      env: { ...process.env, ALLINT_DB: dbPath },
+    });
+    const stop = () => child.kill('SIGINT');
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+    console.log(`Starting ${url} ...`);
+
+    if (o.open) {
+      // Wait for the server, and for the first page to compile, before opening
+      // a tab onto an error.
+      void (async () => {
+        for (let i = 0; i < 120; i++) {
+          if (child.exitCode !== null) return;
+          try {
+            await fetch(url);
+            console.log(`\nOpen: ${url}   (Ctrl+C here to stop)`);
+            openBrowser(url);
+            return;
+          } catch {
+            await new Promise((r) => setTimeout(r, 1_000));
+          }
+        }
+      })();
+    }
+    await new Promise<void>((done) => child.on('exit', () => done()));
+  });
 
 program
   .command('card <id>')

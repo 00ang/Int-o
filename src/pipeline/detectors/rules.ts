@@ -88,6 +88,44 @@ export const PAIR_RULES: PairRule[] = [
       `realised it regardless of the policy.`,
   },
   {
+    id: 'lobbying-then-award',
+    kind: 'lobbying-then-award',
+    fromTypes: ['lobbying'],
+    toTypes: ['government-award'],
+    // The client: the party the lobbying was paid for.
+    fromRoles: ['beneficiary'],
+    toRoles: ['actor', 'beneficiary', 'counterparty'],
+    // A lobbying event is dated by the start of the quarter it reports, so a
+    // contract won during that quarter still reads as following it.
+    minLagDays: 0,
+    maxLagDays: 180,
+    baseConfidence: 0.6,
+    template: (e, lag) =>
+      `${e} was paying for federal lobbying in a period that began ${Math.round(lag)} days before ` +
+      `public money went to ${e}.`,
+    falsifier: (e) =>
+      `The award was solicited or promised before that lobbying began, the lobbying concerned ` +
+      `issues unrelated to the award, or ${e} lobbies every quarter as a matter of course.`,
+  },
+  {
+    id: 'lobbying-then-policy',
+    kind: 'lobbying-then-policy',
+    fromTypes: ['lobbying'],
+    toTypes: ['policy-action', 'legislation'],
+    fromRoles: ['beneficiary'],
+    // Only where the later action itself names the client as gaining.
+    toRoles: ['beneficiary'],
+    minLagDays: 0,
+    maxLagDays: 180,
+    baseConfidence: 0.55,
+    template: (e, lag) =>
+      `${e} was paying for federal lobbying in a period that began ${Math.round(lag)} days before ` +
+      `a policy action named ${e} as a beneficiary.`,
+    falsifier: (e) =>
+      `The policy was drafted or announced before that lobbying began, or it benefits ${e} only ` +
+      `as one of many parties in its sector.`,
+  },
+  {
     id: 'insider-then-news',
     kind: 'insider-then-news',
     fromTypes: ['securities-trade', 'regulatory-filing'],

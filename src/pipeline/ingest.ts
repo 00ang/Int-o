@@ -7,6 +7,8 @@ import { fetchPredictionMarket } from '../sources/prediction-markets.js';
 import { REGISTRY } from '../sources/registry.js';
 import { fetchRss } from '../sources/rss.js';
 import { fetchEdgar } from '../sources/sec-edgar.js';
+import { fetchForm4 } from '../sources/sec-form4.js';
+import { fetchLobbying } from '../sources/lobbying.js';
 import { fetchStockAct } from '../sources/stock-act.js';
 import { fetchAwards } from '../sources/usaspending.js';
 import { writeRecordEvents } from './records.js';
@@ -21,12 +23,27 @@ export function seedSources(db: DB): number {
   return REGISTRY.length;
 }
 
-export async function fetchSource(source: Source, cfg: Config): Promise<Item[]> {
+export interface FetchSourceOptions {
+  /** Adapters that fetch per record skip the ones already on file. */
+  isKnown?: (externalId: string) => boolean;
+  /** A reachability check, not a read: fetch as little as proves the source answers. */
+  probe?: boolean;
+}
+
+export async function fetchSource(
+  source: Source,
+  cfg: Config,
+  opts: FetchSourceOptions = {},
+): Promise<Item[]> {
   switch (source.kind) {
     case 'rss': return fetchRss(source, cfg);
     case 'federal-register': return fetchFederalRegister(source, cfg);
     case 'usaspending': return fetchAwards(source, cfg);
     case 'sec-edgar': return fetchEdgar(source, cfg);
+    case 'sec-form4': return fetchForm4(source, cfg, { isKnown: opts.isKnown, limit: opts.probe ? 2 : 60 });
+    // A probe looks back two weeks: a quiet weekend with nothing posted must
+    // not read as a dead source and get it disabled.
+    case 'lobbying': return fetchLobbying(source, cfg, opts.probe ? { maxPages: 1, sinceDays: 14 } : {});
     case 'stock-act': return fetchStockAct(source, cfg);
     case 'prediction-market': return fetchPredictionMarket(source, cfg);
     case 'import':
@@ -65,6 +82,10 @@ export async function ingest(
   cfg: Config,
   opts: { sourceIds?: string[]; all?: boolean; onProgress?: (r: IngestResult) => void } = {},
 ): Promise<IngestResult[]> {
+  // Keep the database's source list in step with the shipped registry, so a
+  // source added or re-typed in an upgrade is polled without a manual init.
+  seedSources(db);
+
   let due: Source[];
   if (opts.sourceIds?.length) {
     const wanted = new Set(opts.sourceIds);
@@ -82,7 +103,10 @@ export async function ingest(
       sourceId: source.id, fetched: 0, inserted: 0, events: 0, error: null,
     };
     try {
-      const items = await fetchSource(source, cfg);
+      const known = db.prepare('SELECT 1 FROM items WHERE source_id = ? AND external_id = ?');
+      const items = await fetchSource(source, cfg, {
+        isKnown: (externalId) => known.get(source.id, externalId) !== undefined,
+      });
       result.fetched = items.length;
       const tx = db.transaction((batch: Item[]) => {
         for (const it of batch) {
@@ -132,7 +156,7 @@ export async function checkSources(
       sourceId: source.id, name: source.name, ok: false, itemCount: 0, detail: '',
     };
     try {
-      const items = await fetchSource(source, cfg);
+      const items = await fetchSource(source, cfg, { probe: true });
       check.itemCount = items.length;
       // A feed that parses to zero items is reachable but useless to us.
       check.ok = items.length > 0;

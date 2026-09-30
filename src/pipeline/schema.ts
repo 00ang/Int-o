@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 export const EventTypeSchema = z.enum([
   'policy-action', 'legislation', 'regulatory-filing', 'securities-trade',
-  'government-award', 'corporate-action', 'legal-action', 'military-action',
+  'government-award', 'lobbying', 'corporate-action', 'legal-action', 'military-action',
   'diplomatic-action', 'market-move', 'statement', 'report', 'other',
 ]);
 

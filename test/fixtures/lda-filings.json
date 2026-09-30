@@ -1,0 +1,116 @@
+{
+  "count": 6,
+  "next": "https://lda.senate.gov/api/v1/filings/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "url": "https://lda.senate.gov/api/v1/filings/5b1f7c2e-8a31-4e0b-9d3a-7f2c4a9e1d01/",
+      "filing_uuid": "5b1f7c2e-8a31-4e0b-9d3a-7f2c4a9e1d01",
+      "filing_type": "Q3",
+      "filing_type_display": "3rd Quarter - Report",
+      "filing_year": 2026,
+      "filing_period": "third_quarter",
+      "filing_period_display": "3rd Quarter (Jul 1 - Sep 30)",
+      "filing_document_url": "https://lda.senate.gov/filings/public/filing/5b1f7c2e-8a31-4e0b-9d3a-7f2c4a9e1d01/print/",
+      "income": "120000.00",
+      "expenses": null,
+      "dt_posted": "2026-09-29T11:04:12-04:00",
+      "registrant": { "id": 401, "name": "CAPITOL BRIDGE STRATEGIES LLC", "description": "Government relations" },
+      "client": { "id": 9001, "name": "MERIDIAN AEROSPACE CORP", "general_description": "Rotary wing aircraft sustainment", "state_display": "Virginia", "country_display": "United States of America" },
+      "lobbying_activities": [
+        {
+          "general_issue_code": "DEF",
+          "general_issue_code_display": "Defense",
+          "description": "H.R. 8070, National Defense Authorization Act for FY2027, provisions on rotary wing sustainment contracting",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            { "lobbyist": { "id": 1, "prefix": null, "first_name": "Carla", "nickname": null, "middle_name": null, "last_name": "Nguyen", "suffix": null }, "covered_position": "Chief of Staff, Sen. Harold Pike (2019-2024)", "new": true },
+            { "lobbyist": { "id": 2, "prefix": null, "first_name": "Tom", "nickname": null, "middle_name": "J", "last_name": "Baker", "suffix": null }, "covered_position": "N/A", "new": false }
+          ],
+          "government_entities": [
+            { "id": 1, "name": "HOUSE OF REPRESENTATIVES" },
+            { "id": 2, "name": "SENATE" },
+            { "id": 3, "name": "Defense - Dept of (DOD)" },
+            { "id": 4, "name": "Army - Dept of the" }
+          ]
+        },
+        {
+          "general_issue_code": "BUD",
+          "general_issue_code_display": "Budget/Appropriations",
+          "description": "Defense appropriations for Army aviation readiness",
+          "foreign_entity_issues": "",
+          "lobbyists": [
+            { "lobbyist": { "id": 1, "prefix": null, "first_name": "Carla", "nickname": null, "middle_name": null, "last_name": "Nguyen", "suffix": null }, "covered_position": "Chief of Staff, Sen. Harold Pike (2019-2024)", "new": false }
+          ],
+          "government_entities": [ { "id": 2, "name": "SENATE" } ]
+        }
+      ],
+      "foreign_entities": [],
+      "affiliated_organizations": []
+    },
+    {
+      "filing_uuid": "a7d2e4f0-1111-4c8e-8f00-000000000002",
+      "filing_type": "Q3",
+      "filing_year": 2026,
+      "filing_period": "third_quarter",
+      "filing_period_display": "3rd Quarter (Jul 1 - Sep 30)",
+      "filing_document_url": null,
+      "income": null,
+      "expenses": "3,450,000.00",
+      "dt_posted": "2026-09-28T16:40:00-04:00",
+      "registrant": { "id": 77, "name": "HELIX DYNAMICS, INC." },
+      "client": { "id": 77, "name": "HELIX DYNAMICS, INC.", "general_description": "Semiconductors" },
+      "lobbying_activities": [
+        { "general_issue_code": "TRD", "general_issue_code_display": "Trade (Domestic & Foreign)", "description": "Export controls on advanced semiconductors", "lobbyists": [], "government_entities": [ { "id": 9, "name": "Commerce - Dept of (DOC)" } ] }
+      ]
+    },
+    {
+      "filing_uuid": "a7d2e4f0-1111-4c8e-8f00-000000000003",
+      "filing_type": "Q3",
+      "filing_year": 2026,
+      "filing_period": "third_quarter",
+      "income": "10000.00",
+      "expenses": null,
+      "dt_posted": "2026-09-28T10:00:00-04:00",
+      "registrant": { "id": 5, "name": "SMALL SHOP LLC" },
+      "client": { "id": 6, "name": "TOWN OF EXAMPLE" },
+      "lobbying_activities": []
+    },
+    {
+      "filing_uuid": "a7d2e4f0-1111-4c8e-8f00-000000000004",
+      "filing_type": "3A",
+      "filing_year": 2026,
+      "filing_period": "third_quarter",
+      "income": "500000.00",
+      "dt_posted": "2026-09-28T09:00:00-04:00",
+      "registrant": { "id": 8, "name": "AMENDING PARTNERS LLP" },
+      "client": { "id": 9, "name": "RESTATED CORP" },
+      "lobbying_activities": []
+    },
+    {
+      "filing_uuid": "a7d2e4f0-1111-4c8e-8f00-000000000005",
+      "filing_type": "RR",
+      "filing_year": 2026,
+      "filing_period": null,
+      "income": null,
+      "expenses": null,
+      "dt_posted": "2026-09-27T12:00:00-04:00",
+      "registrant": { "id": 401, "name": "CAPITOL BRIDGE STRATEGIES LLC" },
+      "client": { "id": 12, "name": "NATIONAL ASSOCIATION OF ROTORCRAFT OPERATORS", "general_description": "Trade association" },
+      "lobbying_activities": [
+        { "general_issue_code": "AVI", "general_issue_code_display": "Aviation/Aircraft/ Airlines", "description": "FAA reauthorization, rotorcraft certification", "lobbyists": [], "government_entities": [] }
+      ]
+    },
+    {
+      "filing_uuid": "a7d2e4f0-1111-4c8e-8f00-000000000006",
+      "filing_type": "Q2",
+      "filing_year": 2026,
+      "filing_period": "second_quarter",
+      "income": "900000.00",
+      "dt_posted": "2026-07-20T09:00:00-04:00",
+      "registrant": { "id": 20, "name": "OLD NEWS LLP" },
+      "client": { "id": 21, "name": "STALE INDUSTRIES INC" },
+      "lobbying_activities": []
+    }
+  ]
+}
