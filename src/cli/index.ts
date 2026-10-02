@@ -26,6 +26,9 @@ import { reconcile } from '../pipeline/reconcile.js';
 import { fetchBodies } from '../pipeline/bodies.js';
 import { consolidateCompanies } from '../pipeline/consolidate.js';
 import { buildCard } from '../pipeline/card.js';
+import { buildLedger, renderLedgerMarkdown } from '../pipeline/ledger.js';
+import { suggestTopics } from '../pipeline/topics.js';
+import { buildWriterBrief } from '../pipeline/writer-brief.js';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -610,7 +613,7 @@ program
       console.log(`     ${it.id}`);
       console.log();
     }
-    console.log(`${rows.length} items. Investigate one: all-int investigate <id>. Share one: all-int card <id> -c`);
+    console.log(`${rows.length} items. Investigate one: all-int investigate <id>. Share one: all-int card <id> -c. Write about one: all-int ledger <id>`);
   });
 
 /**
@@ -731,6 +734,60 @@ program
     if (o.copy) {
       const via = copyToClipboard(card);
       console.error(via ? '\n(copied to the clipboard)' : '\n(no clipboard tool found; copy it from above)');
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Writing from it
+// ---------------------------------------------------------------------------
+
+program
+  .command('topics')
+  .description('What is ready to be written about: subjects ranked by how much of them the records let you state')
+  .option('-n, --limit <n>', 'how many', Number, 10)
+  .option('--min-score <n>', 'suggest nothing below this', Number, 1)
+  .option('--json', 'machine-readable')
+  .action((o) => {
+    const rows = suggestTopics(db(), { limit: o.limit, minScore: o.minScore });
+    if (o.json) { console.log(JSON.stringify(rows, null, 2)); return; }
+    if (rows.length === 0) {
+      console.log('Nothing to suggest: no storyline or retained item has a stateable record in it yet.');
+      console.log('Run: all-int extract, then all-int link');
+      return;
+    }
+    for (const t of rows) {
+      console.log(`${t.score.toFixed(1).padStart(5)}  ${t.subject.kind === 'thread' ? 'storyline' : 'item     '}  ${t.subject.title}`);
+      console.log(`       ${t.pitch}`);
+      if (t.angle) console.log(`       open with: ${t.angle}`);
+      if (t.gaps.length) console.log(`       gaps: ${t.gaps.join('; ')}`);
+      console.log(`       ${t.subject.id}`);
+      console.log();
+    }
+    console.log(`${rows.length} subjects. Ledger for one: all-int ledger <id>. Brief: all-int brief:writer <id>`);
+  });
+
+program
+  .command('ledger <id>')
+  .description('Every claim on file for an item or storyline, each with its standing, its source and what would show it wrong')
+  .option('--json', 'machine-readable')
+  .action((id: string, o) => {
+    const l = buildLedger(db(), id);
+    if (!l) { console.error(`No item or storyline ${id}.`); process.exitCode = 1; return; }
+    console.log(o.json ? JSON.stringify(l, null, 2) : renderLedgerMarkdown(l));
+  });
+
+program
+  .command('brief:writer <id>')
+  .description('A flat brief for writing about an item or storyline: lede, what the record shows, what is open, lines not to cross (uses the API unless --no-prose)')
+  .option('--no-prose', 'skip the model: ledger and the lines not to cross only, nothing called')
+  .option('--json', 'machine-readable')
+  .action(async (id: string, o) => {
+    const b = await buildWriterBrief(db(), cfg, id, { prose: o.prose });
+    if (!b) { console.error(`No item or storyline ${id}.`); process.exitCode = 1; return; }
+    if (o.json) { console.log(JSON.stringify(b, null, 2)); return; }
+    console.log(b.markdown);
+    if (b.prose && (b.prose.struck || b.prose.demoted)) {
+      console.error(`\n(${b.prose.struck} line${b.prose.struck === 1 ? '' : 's'} struck for citing nothing in the ledger; ${b.prose.demoted} moved to open.)`);
     }
   });
 
