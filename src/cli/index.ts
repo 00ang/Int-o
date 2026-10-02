@@ -763,7 +763,7 @@ program
       console.log(`       ${t.subject.id}`);
       console.log();
     }
-    console.log(`${rows.length} subjects. Ledger for one: all-int ledger <id>. Brief: all-int brief:writer <id>`);
+    console.log(`${rows.length} subject${rows.length === 1 ? '' : 's'}. Ledger for one: all-int ledger <id>. Brief: all-int brief:writer <id>`);
   });
 
 program
