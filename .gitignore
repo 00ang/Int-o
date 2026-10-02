@@ -9,3 +9,4 @@ data/
 .DS_Store
 web/.next/
 web/out/
+web/tsconfig.tsbuildinfo
