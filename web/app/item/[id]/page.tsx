@@ -87,6 +87,14 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         ) : null}
+
+        <div className="formfield">
+          <span className="fnum">44.</span>
+          <div className="fbody">
+            <span className="flabel">For writing about it</span>
+            <a className="digdeeper" href={`/write/${it.id}`}>Ledger and writer brief &rarr;</a>
+          </div>
+        </div>
       </section>
 
       <section className="sheet">

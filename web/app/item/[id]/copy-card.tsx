@@ -10,7 +10,7 @@ import { useState } from 'react';
  * only exists on a secure origin, so opening the app over the LAN falls back to
  * selecting the text and the older copy command.
  */
-export default function CopyCard({ text }: { text: string }) {
+export default function CopyCard({ text, label = 'Copy card for the group chat' }: { text: string; label?: string }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   function fallbackCopy(): boolean {
@@ -40,7 +40,7 @@ export default function CopyCard({ text }: { text: string }) {
   return (
     <div>
       <button type="button" className="btn btn-go" onClick={copy}>
-        {state === 'copied' ? 'Copied' : 'Copy card for the group chat'}
+        {state === 'copied' ? 'Copied' : label}
       </button>
       {state === 'failed' ? (
         <span style={{ marginLeft: 12, color: 'var(--stamp)' }}>

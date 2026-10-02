@@ -79,9 +79,9 @@ disables the rest. Run it on your own machine before your first real ingest.
 Expect a meaningful number to fail - feed URLs rot constantly, and the wire
 services in particular move theirs.
 
-Everything else in the system is verified: 340 tests cover parsing, entity
-resolution, the detectors, the scoring, the trade import and the forecasting
-loop, all against recorded fixtures.
+Everything else in the system is verified: 371 tests cover parsing, entity
+resolution, the detectors, the scoring, the trade import, the forecasting
+loop and the ledger the writer brief is held to, all against recorded fixtures.
 
 ---
 
@@ -116,6 +116,9 @@ loop, all against recorded fixtures.
 | `trades [--late] [-i] [-b] [-f name]` | Browse disclosed trades; `-i` insiders only, `-b` purchases only | no |
 | `lobbying [-r] [-c client]` | Browse lobbying disclosures; `-r` only where lobbyists held government posts | no |
 | `card <id> [-c]` | One story as plain text for a group chat (`-c` copies it) | no |
+| `topics [-n] [--json]` | What is ready to be written about, ranked on what the records let you state | no |
+| `ledger <id> [--json]` | Every claim on file for an item or storyline, with its standing, source and falsifier | no |
+| `brief:writer <id> [--no-prose]` | A flat writer brief held to the ledger; `--no-prose` skips the model | **yes**, unless `--no-prose` |
 | `entities:merge` | Merge companies the corpus split in two, rebuild the map | no |
 | `verdict <id> <sound\|coincidence\|wrong>` | Record your judgement | no |
 | `entity <name>` / `entities` | What a party has been involved in | no |
@@ -165,6 +168,79 @@ unverified, and every link carries what would show it wrong. A connection you
 have marked `coincidence` or `wrong` with `verdict` is left off. It is plain
 text rather than markdown because most of the places it gets pasted do not
 render markdown.
+
+## Writing from it
+
+The brief is written for a reader. These three are for someone who is going
+to publish - a newsletter, a column, a long post - and who needs to know,
+before the first sentence, what the material will bear.
+
+```bash
+all-int topics                       # what is ready to be written about
+all-int ledger <id>                  # every claim on file, with its standing
+all-int brief:writer <id>            # the flat brief, prose held to the ledger
+all-int brief:writer <id> --no-prose # the same without the model: ledger and guards only
+```
+
+**`topics` ranks in code.** Active storylines and the reading queue are the
+candidates; each gets a ledger and is scored on it: patterns the detectors
+joined count most, then documented events, then independent sources and
+primary records, with a small credit for having moved recently. A story one
+outlet reported once scores near nothing however large the headline, and
+freshness earns nothing on its own, because a recent report with nothing
+documented behind it is still nothing to write. Every suggestion prints the
+counts it was ranked on, the gaps it has, and something already on file to
+open with - a triage angle or a storyline's open question. No model call.
+
+**The ledger is the unit.** For an item or a storyline, every claim on file
+as a numbered row: the item's events, the connections touching them with the
+far end of each pulled in as its own row, and background on the players from
+their dossiers. Each row carries a **standing**, which is a property of the
+record behind it and not a judgement about the claim:
+
+| standing | comes from | what a writer may do with it |
+|---|---|---|
+| `record` | an event a filing or official record documents | state it, citing the record |
+| `reported` | an event a newsroom asserts | attribute it to the outlet |
+| `alleged` | a claim by a party to a dispute | attribute it to them; do not state it |
+| `speculated` | analysis presented as such | say whose |
+| `pattern` | a deterministic connection | state both records and the interval; not intent, coordination or cause |
+| `overlap` | an entity-overlap connection | nothing; it says two sources concern one party |
+| `hypothesis` | a model-proposed connection | pose it as a question, carrying its falsifier |
+| `background` | a recalled or inferred dossier claim | verify independently or leave out |
+
+A dossier claim a record here already supports is left off, since the record
+is its own row. A connection you have marked `coincidence` or `wrong` is
+left off and counted, so the brief can say it is left off. Only `record` and
+`pattern` rows are **stateable**: the standings a sentence may rest on in the
+indicative.
+
+**The writer brief is flat on purpose.** Short declarative sentences, no
+adjectives of judgement, no emphasis, no conclusion - a brief that already
+has a voice has already decided what the piece says, and that is the
+writer's decision. It is not an essay and not a draft: a lede, what the
+record shows, what is open, the lines not to cross, and a shape.
+
+The two halves are kept apart, as they are everywhere else here:
+
+- **The guards are code.** "Lines not to cross" are derived from the
+  ledger's standings and the usage rule fixed beside each one, so the same
+  rows produce the same lines every time and the brief cannot forget that a
+  hypothesis is a hypothesis.
+- **The prose is held to the ledger by construction.** The model sees the
+  ledger and the usage rules and nothing else. Every line it returns cites
+  the rows it rests on; a line citing nothing in the ledger is struck; a line
+  offered as established that rests on no stateable row is moved to the open
+  questions; a lede that fails the same test is replaced by the first
+  established line. The counts of what was struck and moved are printed in
+  the brief, and the ledger is printed under it so every citation can be
+  checked where it is read. Words the register forbids - "notably",
+  "bombshell", "raises questions" and the rest - are flagged, not rewritten.
+
+With `--no-prose` nothing is called. The ledger and the guards are a complete
+document on their own, and they are what the web app's **Write** page shows:
+the ranked subjects, and for each its ledger and lines not to cross, with
+the brief and the ledger each a click from the clipboard as markdown.
 
 ## Contract awards and other structured records
 
@@ -567,10 +643,11 @@ touches it:
 | `graph:build`, `activate` | the association map and firing it |
 | `link` without `-H` | the deterministic detectors |
 | `search`, `queue`, `entity`, `trades`, `threads`, `stats`, `calibration` | reading |
+| `topics`, `ledger`, `card`, `brief:writer --no-prose` | writing from what is on file |
 | the entire web app | including the map and every chart |
 
 Only judgement costs anything: `triage`, `extract`, `synthesize`,
-`threads:update`, `brief`, `forecast`, and `link -H`.
+`threads:update`, `brief`, `brief:writer`, `forecast`, and `link -H`.
 
 For those, set `ALLINT_LLM_PROVIDER=claude-cli` and they run through a Claude
 Code subscription instead of a credit balance - the same models, nothing billed
@@ -656,9 +733,9 @@ condition of their access policies.
 ## Status and what's next
 
 Built: the core engine, the CLI, the trade import path and the forecasting
-loop. Verified: 340 tests over parsing, entity resolution, detectors, scoring,
-import, market matching and calibration. Unverified: the feed URLs, which need
-`sources:check --fix` on a networked machine.
+loop. Verified: 371 tests over parsing, entity resolution, detectors, scoring,
+import, market matching, calibration and the writer's ledger. Unverified: the
+feed URLs, which need `sources:check --fix` on a networked machine.
 
 Shipped since:
 
@@ -676,6 +753,10 @@ Shipped since:
 5. **Forecasting against live threads** - run against a real corpus for the
    first time. The loop proposes, the validator drops what cannot be scored,
    and `forecast:anchor` declines to match rather than reaching.
+6. **Writing from it** - `topics`, `ledger` and `brief:writer`, and the
+   **Write** page. Claim-level ledgers built in code, a flat writer brief
+   whose every line must cite a row of the ledger or be struck. See [Writing
+   from it](#writing-from-it).
 
 Still open, in order:
 
@@ -704,6 +785,9 @@ all-int web --demo     # the same, on an invented corpus
 read-only handle - a page render must never spend money - and the one route
 that writes, `POST /api/investigate/:id`, imports the engine from `dist/`
 rather than reimplementing it, so the app cannot drift from the tested path.
+The card, the topic ranking and the ledger are imported from the build the
+same way: what the **Write** page shows is what `all-int topics` and
+`all-int ledger` print.
 
 It looks like a declassified working file because that is what it is: a typed
 form, a manila ground, and stamps that carry the verdict. The classification
