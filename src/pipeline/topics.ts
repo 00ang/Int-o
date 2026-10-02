@@ -50,7 +50,10 @@ export function scoreLedger(l: Ledger, now = new Date()): Omit<TopicSuggestion, 
   const dates = l.rows.map((r) => r.date).filter((d): d is string => d !== null).sort();
   const latest = dates[dates.length - 1];
   const ageDays = latest ? Math.max(0, Math.round((now.getTime() - Date.parse(`${latest}T12:00:00.000Z`)) / 86_400_000)) : Infinity;
-  const recency = Number.isFinite(ageDays) ? Math.max(0, 1 - ageDays / RECENCY_HORIZON_DAYS) : 0;
+  // Freshness counts only when there is something stateable to be fresh. A
+  // recent report with nothing documented behind it is still nothing to write.
+  const stateable = t.record + t.pattern > 0;
+  const recency = stateable && Number.isFinite(ageDays) ? Math.max(0, 1 - ageDays / RECENCY_HORIZON_DAYS) : 0;
 
   const score =
     WEIGHT.pattern * t.pattern +
